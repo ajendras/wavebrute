@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="572" viewBox="0 0 900 572" role="img" aria-label="WaveBrute — demo">
+  <style>
+    text{font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;font-size:15px}
+    .l{opacity:0}
+    .ty{clip-path:inset(0 100% 0 0)}
+    .cur{animation:blink 1s steps(1) infinite}
+    @keyframes show{to{opacity:1}}
+    @keyframes type{to{clip-path:inset(0 0 0 0)}}
+    @keyframes blink{50%{opacity:0}}
+    @media (prefers-reduced-motion:reduce){.l{opacity:1;animation:none!important}.ty{clip-path:none;animation:none!important}}
+  </style>
+  <rect width="900" height="572" rx="14" fill="#0d1117"/>
+  <rect x=".5" y=".5" width="899" height="572" rx="14" fill="none" stroke="#30363d"/>
+  <rect width="900" height="40" rx="14" fill="#161b22"/><rect y="26" width="900" height="14" fill="#161b22"/>
+  <circle cx="24" cy="20" r="6" fill="#ff5f57"/><circle cx="44" cy="20" r="6" fill="#febc2e"/><circle cx="64" cy="20" r="6" fill="#28c840"/>
+  <text x="450" y="25" text-anchor="middle" fill="#8b949e" style="font-size:13px">WaveBrute — demo</text>
+<text x="28" y="74" class="l" style="animation:show .01s 0.60s forwards"><tspan fill="#00ff9f">❯</tspan></text><text x="50" y="74" class="l ty" style="animation:show .01s 0.60s forwards,type 1.44s steps(32) 0.60s forwards" fill="#e5e7eb">wavebrute scan --interface wlan0</text>
+<text x="50" y="100" class="l" style="animation:show .01s 2.34s forwards" fill="#94a3b8">Found 14 networks</text>
+<text x="50" y="126" class="l" style="animation:show .01s 2.56s forwards" fill="#94a3b8">WPA2 • HomeNet (RSSI -42)</text>
+<text x="50" y="152" class="l" style="animation:show .01s 2.78s forwards" fill="#94a3b8">WPA3 • OfficeWiFi (RSSI -67)</text>
+<text x="50" y="178" class="l" style="animation:show .01s 3.00s forwards" fill="#94a3b8">Scan complete in 4.2s</text>
+<text x="28" y="230" class="l" style="animation:show .01s 3.57s forwards"><tspan fill="#00ff9f">❯</tspan></text><text x="50" y="230" class="l ty" style="animation:show .01s 3.57s forwards,type 2.03s steps(45) 3.57s forwards" fill="#e5e7eb">wavebrute wordlist --ssid HomeNet --size 8000</text>
+<text x="50" y="256" class="l" style="animation:show .01s 5.90s forwards" fill="#94a3b8">Generated 8000 candidates</text>
+<text x="50" y="282" class="l" style="animation:show .01s 6.12s forwards" fill="#94a3b8">Added 124 SSID-derived patterns</text>
+<text x="50" y="308" class="l" style="animation:show .01s 6.34s forwards" fill="#94a3b8">Saved → wordlists/homenet.txt</text>
+<text x="28" y="360" class="l" style="animation:show .01s 6.91s forwards"><tspan fill="#00ff9f">❯</tspan></text><text x="50" y="360" class="l ty" style="animation:show .01s 6.91s forwards,type 2.20s steps(75) 6.91s forwards" fill="#e5e7eb">wavebrute attack --ssid HomeNet --simulate --wordlist wordlists/homenet.txt</text>
+<text x="50" y="386" class="l" style="animation:show .01s 9.41s forwards" fill="#94a3b8">Simulation started (no real traffic)</text>
+<text x="50" y="412" class="l" style="animation:show .01s 9.63s forwards" fill="#94a3b8">2453/8000 passwords tried</text>
+<text x="50" y="438" class="l" style="animation:show .01s 9.85s forwards" fill="#94a3b8">Password &apos;Summer2023!&apos; cracked in simulation</text>
+<text x="50" y="464" class="l" style="animation:show .01s 10.07s forwards" fill="#94a3b8">Time: 1.8s • Rate: 1361/s</text>
+<text x="28" y="516" class="l" style="animation:show .01s 10.64s forwards"><tspan fill="#00ff9f">❯</tspan></text><text x="50" y="516" class="l ty" style="animation:show .01s 10.64s forwards,type 2.20s steps(53) 10.64s forwards" fill="#e5e7eb">wavebrute report --input simulation.json --format pdf</text>
+<g class="l" style="animation:show .01s 13.14s forwards"><text x="28" y="542" fill="#00ff9f">❯</text><rect class="cur" x="50" y="527" width="10" height="18" fill="#e5e7eb"/></g>
+</svg>

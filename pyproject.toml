@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wavebrute"
+version = "0.1.0"
+description = "Ethical WiFi auditing toolkit with Kivy GUI and Android APK for simulated and authorized pentests"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = [
+    "kivy>=2.1.0",
+    "scapy>=2.5.0",
+    "reportlab>=4.0.0",
+    "jinja2>=3.1.0",
+    "click>=8.1.0",
+]
+authors = [
+    {name = "WaveBrute Team"},
+]
+keywords = ["wifi", "pentest", "security", "scapy", "kivy", "audit", "bruteforce"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Topic :: Security",
+    "Topic :: Education",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.scripts]
+wavebrute = "wavebrute.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
+
+[tool.setuptools.package-dir]
+"" = "src"
