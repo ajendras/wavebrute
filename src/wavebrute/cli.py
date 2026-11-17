@@ -11,6 +11,7 @@ Examples:
     wavebrute scan --simulation
     wavebrute wordlist "MyNetwork" --size 2000 --output custom.txt
     wavebrute attack --ssid "Cafe_Rouge_FreeWiFi"
+    wavebrute pmkid --ssid "Vulnerable-Router"
     wavebrute report --title "My Audit"
 """
 
@@ -177,6 +178,45 @@ def attack(ssid: str, wordlist: Optional[str], max_attempts: int, simulation: bo
 
 
 @main.command()
+@click.option("--ssid", "-s", required=True, help="Target network SSID")
+@click.option("--max-attempts", "-m", default=8000, type=int)
+def pmkid(ssid: str, max_attempts: int) -> None:
+    """Simulate a PMKID attack (no handshake or clients required).
+
+    Demonstrates extraction of RSN PMKID from an AP and subsequent
+    offline cracking in safe simulation mode.
+    """
+    auditor = Auditor(simulation_mode=True)
+    click.echo(click.style("\n=== PMKID ATTACK SIMULATOR ===", fg="magenta", bold=True))
+    click.echo(f"Target SSID : {ssid}")
+    click.echo("Technique   : PMKID extraction from AP (no clients needed)")
+    click.echo("Mode        : SAFE SIMULATION ONLY")
+
+    try:
+        result = auditor.simulate_pmkid_attack(
+            ssid=ssid,
+            max_attempts=max_attempts,
+        )
+        click.echo("\n" + "=" * 60)
+        if result.get("success"):
+            click.echo(click.style("✅ PMKID CRACKED IN SIMULATION", fg="green", bold=True))
+            click.echo(f"Password : {result.get('password')}")
+        else:
+            click.echo(click.style("No crack in this simulation run.", fg="yellow"))
+        click.echo(f"Attempts made : {result.get('attempts', 0)}")
+        click.echo(f"Time          : {result.get('duration_seconds', 0)} seconds")
+        click.echo(f"Notes         : {result.get('notes', '')}")
+        click.echo("\n" + click.style("PMKID RECOMMENDATIONS:", fg="cyan", bold=True))
+        for rec in result.get("recommendations", []):
+            click.echo(f"  • {rec}")
+        click.echo("=" * 60)
+    except PermissionError as exc:
+        click.echo(click.style(f"ETHICS GUARD: {exc}", fg="red", bold=True))
+    except Exception as exc:  # pylint: disable=broad-except
+        click.echo(click.style(f"Simulation error: {exc}", fg="red"))
+
+
+@main.command()
 @click.option(
     "--title",
     default="WaveBrute Ethical Audit Report",
@@ -201,6 +241,7 @@ def report(title: str, output: Optional[str]) -> None:
         click.echo("No prior results found — running quick simulation pipeline...")
         auditor.scan()
         auditor.simulate_attack("Cafe_Rouge_FreeWiFi")
+        auditor.simulate_pmkid_attack("IoT-Devices")
         auditor.analyze_handshake("demo.cap")  # will simulate
 
     click.echo(click.style("\n=== REPORT BUILDER ===", fg="magenta", bold=True))

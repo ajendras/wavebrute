@@ -4,7 +4,7 @@ Each screen follows the exact visual direction: thick 3px black borders,
 hard 6px offset black shadows, flat #ff004d / #00ff9f colour blocks,
 chunky monospace headings, zero radius, high contrast, playful loud copy.
 All screens share an Auditor instance and demonstrate full pipeline:
-live/safe scan, in-memory attack, PDF report generation.
+live/safe scan, in-memory attack, PMKID simulation, PDF report generation.
 """
 
 from typing import Any, Dict, List
@@ -165,12 +165,12 @@ class ScanScreen(Screen):
         nav.add_widget(
             BrutalistButton(
                 text="ATTACK", accent="#ff004d", font_size="18sp"
-            ).__setattr__("on_press", lambda x: self.manager.current("attack"))
+            ).__setattr__("on_press", lambda x: setattr(self.manager, "current", "attack"))
         )
         nav.add_widget(
             BrutalistButton(
                 text="REPORT", accent="#ff004d", font_size="18sp"
-            ).__setattr__("on_press", lambda x: self.manager.current("report"))
+            ).__setattr__("on_press", lambda x: setattr(self.manager, "current", "report"))
         )
         root.add_widget(nav)
 
@@ -204,7 +204,7 @@ class ScanScreen(Screen):
 
 
 class AttackScreen(Screen):
-    """Simulated brute-force attack screen."""
+    """Simulated brute-force and PMKID attack screen."""
 
     auditor = ObjectProperty(None)
 
@@ -215,7 +215,7 @@ class AttackScreen(Screen):
         root = BoxLayout(orientation="vertical", padding=15, spacing=15)
 
         header = BrutalistLabel(
-            text="BRUTE FORCE SIMULATOR",
+            text="BRUTE FORCE / PMKID SIMULATOR",
             size_hint_y=None,
             height=90,
             font_size="36sp",
@@ -232,10 +232,16 @@ class AttackScreen(Screen):
         root.add_widget(self.ssid_input)
 
         self.attack_btn = BrutalistButton(
-            text="RUN SAFE ATTACK", accent="#ff004d"
+            text="RUN BRUTE FORCE SIM", accent="#ff004d"
         )
         self.attack_btn.bind(on_press=self._run_attack)
         root.add_widget(self.attack_btn)
+
+        self.pmkid_btn = BrutalistButton(
+            text="RUN PMKID SIM", accent="#00ff9f"
+        )
+        self.pmkid_btn.bind(on_press=self._run_pmkid_attack)
+        root.add_widget(self.pmkid_btn)
 
         self.result_label = Label(
             text="Attack result will appear here...",
@@ -282,9 +288,38 @@ class AttackScreen(Screen):
             except Exception as exc:  # pylint: disable=broad-except
                 self.result_label.text = f"ETHICS GUARD: {exc}"
             finally:
-                self.attack_btn.text = "RUN SAFE ATTACK"
+                self.attack_btn.text = "RUN BRUTE FORCE SIM"
 
         Clock.schedule_once(attack_done, 0.6)
+
+    def _run_pmkid_attack(self, *_args: Any) -> None:
+        ssid = self.ssid_input.text.strip()
+        if not ssid:
+            self.result_label.text = "SSID CANNOT BE EMPTY"
+            return
+
+        self.pmkid_btn.text = "RUNNING PMKID SIM..."
+        self.result_label.text = "SIMULATING PMKID ATTACK..."
+
+        def attack_done(dt: float) -> None:
+            try:
+                result = self.auditor.simulate_pmkid_attack(ssid, max_attempts=5000)
+                if result.get("success"):
+                    pwd = result.get("password", "???")
+                    self.result_label.text = (
+                        f"[b]PMKID CRACKED![/b]\n{pwd}\n"
+                        f"{result['attempts']} attempts in "
+                        f"{result['duration_seconds']}s\n\n"
+                        f"{result.get('notes', '')[:120]}..."
+                    )
+                else:
+                    self.result_label.text = "No password found in PMKID simulation."
+            except Exception as exc:  # pylint: disable=broad-except
+                self.result_label.text = f"ETHICS GUARD: {exc}"
+            finally:
+                self.pmkid_btn.text = "RUN PMKID SIM"
+
+        Clock.schedule_once(attack_done, 0.5)
 
 
 class ReportScreen(Screen):

@@ -6,10 +6,14 @@ targeted wordlist generation, handshake analysis, PDF reporting, and
 Android deployment via Buildozer.
 
 All live operations are guarded by an Ethics Guard. Simulation mode is
-enabled by default for classrooms and training.
+enabled by default for classrooms and training. The new simulate_pmkid_attack()
+demonstrates client-less RSN PMKID extraction and cracking.
 
 Public API:
     from wavebrute import Auditor, WordlistGenerator, ReportBuilder, ConsentManager
+
+    auditor = Auditor(simulation_mode=True)
+    auditor.simulate_pmkid_attack("MyNetwork")
 """
 
 __version__ = "0.1.0"

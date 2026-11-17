@@ -3,6 +3,7 @@
 Implements the primary Auditor class with full support for:
 - Live or simulated WiFi scanning (via scanner.py)
 - Safe in-memory brute-force attack simulation
+- Safe in-memory PMKID attack simulation (client-less RSN extraction)
 - Handshake capture file analysis (via Scapy)
 - Ethics enforcement through ConsentManager
 - Result collection for PDF reporting
@@ -28,9 +29,10 @@ from .report import ReportBuilder
 class Auditor:
     """Main orchestrator for ethical WiFi audits.
 
-    Provides scan(), simulate_attack(), and analyze_handshake() as the
-    primary public interface. All operations respect the ConsentManager
-    and default to safe simulation mode.
+    Provides scan(), simulate_attack(), simulate_pmkid_attack(),
+    analyze_handshake() and build_report() as the primary public interface.
+    All operations respect the ConsentManager and default to safe
+    simulation mode.
     """
 
     def __init__(self, simulation_mode: bool = True, interface: str = "wlan0") -> None:
@@ -159,6 +161,43 @@ class Auditor:
         result = self._run_in_memory_attack(ssid, wordlist_path, max_attempts)
         self.results.append(result)
         self.consent_manager.log_audit("simulate_attack", result)
+        return result
+
+    def simulate_pmkid_attack(
+        self,
+        ssid: str,
+        max_attempts: int = 8000,
+    ) -> Dict[str, Any]:
+        """Perform a safe in-memory simulation of a PMKID attack.
+
+        PMKID attacks allow cracking without capturing a full 4-way handshake
+        by extracting the PMKID from the AP's response to a special association.
+        This is common on many consumer routers. No real packets are sent.
+
+        Args:
+            ssid: Target network SSID.
+            max_attempts: Cap on simulation iterations.
+
+        Returns:
+            Dict with success, password, stats, and PMKID-specific notes.
+
+        Raises:
+            ValueError: If ssid is invalid.
+            PermissionError: If consent not granted.
+        """
+        if not isinstance(ssid, str) or len(ssid.strip()) == 0:
+            raise ValueError("ssid must be a non-empty string")
+        ssid = ssid.strip()
+
+        if not self.consent_manager.require_consent(f"simulated PMKID attack on '{ssid}'"):
+            raise PermissionError(
+                "Ethics Guard denied the PMKID simulation. "
+                "Complete the consent checklist first."
+            )
+
+        result = self._run_pmkid_simulation(ssid, max_attempts)
+        self.results.append(result)
+        self.consent_manager.log_audit("simulate_pmkid_attack", result)
         return result
 
     def analyze_handshake(self, capfile: str) -> Dict[str, Any]:
@@ -324,6 +363,64 @@ class Auditor:
             "timestamp": datetime.now().isoformat(),
         }
 
+    def _run_pmkid_simulation(
+        self, ssid: str, max_attempts: int
+    ) -> Dict[str, Any]:
+        """Internal engine for PMKID simulation.
+
+        Uses WordlistGenerator + AI hints. The cracking condition is tuned
+        to demonstrate typical weak passwords found in PMKID captures.
+        """
+        start_time = time.time()
+
+        generator = WordlistGenerator()
+        wordlist = generator.from_ssid(ssid, size=800)
+        ai_suggestions = generate_ai_suggestions(ssid)
+        wordlist = list(dict.fromkeys(ai_suggestions + wordlist))  # dedup
+
+        # PMKID often cracks default or simple passwords quickly
+        base = ssid.lower().replace(" ", "").replace("-", "").replace("_", "")
+        secret = base + "123" if len(base) < 10 else base[:6] + "admin"
+
+        cracked_password: Optional[str] = None
+        attempts = 0
+
+        for password in wordlist[:max_attempts]:
+            attempts += 1
+            p_lower = password.lower()
+            if (
+                p_lower == secret
+                or "admin" in p_lower
+                or "123" in p_lower
+                or any(x in p_lower for x in ("pass", "wifi", base[:6]))
+            ):
+                cracked_password = password
+                break
+
+        duration = time.time() - start_time
+
+        success = cracked_password is not None
+        return {
+            "type": "pmkid_simulation",
+            "ssid": ssid,
+            "success": success,
+            "password": cracked_password,
+            "attempts": attempts,
+            "duration_seconds": round(duration, 3),
+            "words_per_second": round(attempts / duration) if duration > 0 else 0,
+            "simulation": True,
+            "attack_type": "PMKID",
+            "ai_suggestions_used": len(ai_suggestions),
+            "notes": "PMKID retrieved from AP RSN IE. This attack does not require any connected clients.",
+            "recommendations": [
+                "Disable 802.11r fast roaming if not needed (can leak PMKID)",
+                "Use complex unique passwords for all WiFi networks",
+                "Upgrade to WPA3 which is resistant to PMKID attacks",
+                "Consider enterprise mode (WPA2/3-Enterprise) for business networks",
+            ],
+            "timestamp": datetime.now().isoformat(),
+        }
+
     def _simulate_handshake_analysis(self, capfile: str) -> Dict[str, Any]:
         """Return realistic handshake metadata for simulation or fallback."""
         return {
@@ -363,7 +460,7 @@ class Auditor:
         if not self.results:
             raise ValueError(
                 "No audit results available. Run scan(), simulate_attack(), "
-                "or analyze_handshake() first."
+                "simulate_pmkid_attack(), or analyze_handshake() first."
             )
 
         if output_path is None:
@@ -394,6 +491,8 @@ if __name__ == "__main__":
     print(f"Simulated attack success: {attack['success']}")
     if attack.get("password"):
         print(f"  Password found: {attack['password']}")
+    pmkid = auditor.simulate_pmkid_attack("IoT-Devices")
+    print(f"PMKID simulation success: {pmkid['success']}")
     report_path = auditor.build_report()
     print(f"PDF report written to: {report_path}")
     print("Demo completed successfully. All operations were simulated.")
