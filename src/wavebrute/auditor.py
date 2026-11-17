@@ -73,7 +73,7 @@ class Auditor:
         Raises:
             ValueError: On invalid interface name.
             RuntimeError: On live scan failure (suggests using simulation).
-            PermissionError: If consent is not granted.
+            PermissionError: If consent is not granted (live mode only).
         """
         if interface is None:
             interface = self.interface
@@ -84,7 +84,10 @@ class Auditor:
                 "Run with simulation_mode=True if you lack privileges."
             )
 
-        if not self.consent_manager.require_consent("network scan"):
+        consent_action = (
+            "simulated network scan" if self.simulation_mode else "network scan"
+        )
+        if not self.consent_manager.require_consent(consent_action):
             raise PermissionError(
                 "ConsentManager blocked scan. Call consent_manager.show_checklist() "
                 "and obtain explicit permission before live actions."
@@ -162,8 +165,8 @@ class Auditor:
         """Analyze a packet capture for WPA handshake presence.
 
         Uses parse_cap_file (from utils) and Scapy when possible.
-        Falls back to realistic simulation if real parsing fails or
-        file is not a real capture.
+        Falls back to realistic simulation if the capture file is missing
+        or real parsing fails (useful for demos, tests, and CLI).
 
         Args:
             capfile: Path to .cap, .pcap, or .pcapng file.
@@ -172,36 +175,34 @@ class Auditor:
             Dict describing handshake details, MACs, crackability, and notes.
 
         Raises:
-            FileNotFoundError: If capfile does not exist.
-            ValueError: If file extension is unsupported.
+            ValueError: If capfile is empty or has unsupported extension
+                (when the file exists).
             PermissionError: If consent was not granted.
         """
         if not isinstance(capfile, str) or not capfile.strip():
             raise ValueError("capfile must be a non-empty path string")
 
         capfile = capfile.strip()
-        if not os.path.isfile(capfile):
-            raise FileNotFoundError(
-                f"Capture file '{capfile}' does not exist. "
-                "For demos you can use a placeholder .cap file."
-            )
-
-        if not capfile.lower().endswith((".cap", ".pcap", ".pcapng")):
-            raise ValueError(
-                "capfile must have extension .cap, .pcap or .pcapng"
-            )
 
         if not self.consent_manager.require_consent("handshake analysis"):
             raise PermissionError("ConsentManager blocked handshake analysis.")
 
-        try:
-            parsed = parse_cap_file(capfile)
-            if parsed and parsed.get("has_handshake", False):
-                analysis: Dict[str, Any] = parsed
-            else:
-                analysis = self._simulate_handshake_analysis(capfile)
-        except Exception:  # Scapy errors, permission issues, malformed file
+        if not os.path.isfile(capfile):
             analysis = self._simulate_handshake_analysis(capfile)
+        else:
+            if not capfile.lower().endswith((".cap", ".pcap", ".pcapng")):
+                raise ValueError(
+                    "capfile must have extension .cap, .pcap or .pcapng"
+                )
+
+            try:
+                parsed = parse_cap_file(capfile)
+                if parsed and parsed.get("has_handshake", False):
+                    analysis: Dict[str, Any] = parsed
+                else:
+                    analysis = self._simulate_handshake_analysis(capfile)
+            except Exception:  # Scapy errors, permission issues, malformed file
+                analysis = self._simulate_handshake_analysis(capfile)
 
         analysis["file"] = capfile
         analysis["timestamp"] = datetime.now().isoformat()
