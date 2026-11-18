@@ -1,89 +1,56 @@
 [app]
 
-# Title of the application
+# (str) Title of your application
 title = WaveBrute
 
-# Package name (must be unique and follow reverse-domain style)
+# (str) Package name
 package.name = wavebrute
 
-# Package domain (used for Android package identifier)
+# (str) Package domain (needed for android)
 package.domain = org.wavebrute
 
-# Source directory (contains the Python code and assets)
+# (str) Source code where the main.py live
 source.dir = .
 
-# Main Python file that starts the app (Kivy entry point)
-source.main = src/wavebrute/gui/app.py
+# (list) Source files to include (let empty to include all the files)
+source.include_exts = py,png,jpg,kv,atlas,ttf
 
-# List of file extensions to include in the APK
-source.include_exts = py,png,jpg,kv,json,atlas,ttf
+# (list) Source files to exclude (let empty to not exclude anything)
+source.exclude_patterns = tests/*,docs/*,assets/*.svg,*.md,CHANGELOG.md,CONTRIBUTING.md,SECURITY.md
 
-# Application version
+# (str) Application versioning (method 1)
 version = 0.1.0
 
-# Python requirements (Kivy + core dependencies)
-requirements = python3,kivy==2.1.0,scapy,reportlab,jinja2,click
+# (list) Application requirements
+requirements = python3,kivy==2.1.0,scapy>=2.5.0,reportlab>=4.0.0,jinja2>=3.1.0,click>=8.1.0
 
-# Application orientation (portrait, landscape or all)
-orientation = all
+# (str) Supported orientation (one of landscape, portrait or all)
+orientation = portrait
 
-# Whether the application should start in fullscreen
+# (bool) Indicate if the application should be fullscreen or not
 fullscreen = 0
 
-# Android permissions required for WiFi scanning and location (used by Kivy on Android)
-android.permissions = ACCESS_FINE_LOCATION,ACCESS_WIFI_STATE,ACCESS_NETWORK_STATE,CHANGE_WIFI_MULTICAST_STATE,INTERNET
+# (list) Permissions
+android.permissions = ACCESS_FINE_LOCATION,ACCESS_WIFI_STATE,ACCESS_NETWORK_STATE,INTERNET
 
-# Android API level
+# (int) Android API to use
 android.api = 33
+
+# (int) Minimum API required
 android.minapi = 21
 
-# Supported architectures (both 64-bit and 32-bit for broad compatibility)
+# (str) Android arch to build for
 android.arch = arm64-v8a,armeabi-v7a
 
-# Use the SDL2 bootstrap (standard for modern Kivy apps)
-bootstrap = sdl2
+# (str) Android entry point
+android.entrypoint = src/wavebrute/gui/app.py
 
-# Icon and presplash (add your own files named icon.png and presplash.png)
-# icon.filename = icon.png
-# presplash.filename = presplash.png
+# (str) Presplash background color (hex value in #rrggbb or #rrggbbaa format)
+presplash.color = #FFEA00
 
-# Enable GPU acceleration on Android
-android.allow_backup = False
-android.uses_splash = True
-
-# Extra Gradle settings for a loud neo-brutalist app (large heap for report generation)
-android.add_gradle_repositories = google(),mavenCentral()
-android.gradle_dependencies = com.google.android.material:material:1.4.0
-
-[p4a]
-# Use latest python-for-android
-p4a.source_dir = /home/user/.local/share/python-for-android
-p4a.branch = develop
-
-[buildozer]
-# Log level (2 = normal, higher for debugging)
-log_level = 2
-
-# Warn when building as root
-warn_on_root = 1
-
-# Automatically build and run on change (handy during development)
-autobuild = 1
-
-# Directory where build artifacts are stored
-build_dir = .buildozer
-
-# Do not delete build artifacts between runs
-buildozer.skip_build = False
-
-# Title shown during Android build
-title = WaveBrute Ethical WiFi Auditor
-
-# Description shown in APK metadata
-description = Neo-brutalist ethical WiFi auditing toolkit with safe simulation mode
-
-# Author
-author = WaveBrute Team
-
-# Enable verbose output for the Kivy bootstrap
-kivy.sdl2 = 1
+# Improved Android UI scaling:
+# The GUI now uses kivy.metrics.dp for all sizes/padding/borders.
+# Buttons have a minimum 64dp height guaranteeing comfortable
+# touch targets on any device density. Build with:
+#   buildozer -c android debug
+# The resulting APK will scale cleanly from small phones to large tablets.

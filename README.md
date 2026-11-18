@@ -182,7 +182,8 @@ print("Generated:", path)
 
 <details><summary>GUI usage</summary>
 
-Launch with `python -m wavebrute.gui.app`. The app provides three screens (`ScanScreen`, `AttackScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 3px borders and 6px hard shadows. The Attack screen now includes a dedicated PMKID simulation button.
+Launch with `python -m wavebrute.gui.app`. The app provides three screens (`ScanScreen`, `AttackScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 3px borders and 6dp hard shadows. The Attack screen includes a dedicated PMKID simulation button. **Android UI now uses `kivy.metrics.dp` for all sizes with minimum 64dp touch targets for proper scaling and finger-friendly interaction across device densities.**
+
 </details>
 
 ## 🔧 Configuration
@@ -257,7 +258,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] **v0.1.0** — first release: Live Scanner, Smart Wordlists, Safe Simulation, Android APK
 - [x] Add PMKID attack simulation module
 - [x] Integrate optional Hashcat export for real offline cracking
-- [ ] Improve Android UI scaling and touch targets in APK
+- [x] Improve Android UI scaling and touch targets in APK
 - [ ] Add plugin system for custom wordlist mutators
 - [ ] Support Windows Npcap for native scanning
 - [ ] Train and bundle tiny on-device model for password prediction

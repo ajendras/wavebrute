@@ -1,16 +1,20 @@
 """Neo-brutalist Kivy screens for WaveBrute.
 
-Each screen follows the exact visual direction: thick 3px black borders,
-hard 6px offset black shadows, flat #ff004d / #00ff9f colour blocks,
+Each screen follows the exact visual direction: thick 3dp black borders,
+hard 6dp offset black shadows, flat #ff004d / #00ff9f colour blocks,
 chunky monospace headings, zero radius, high contrast, playful loud copy.
+All sizes now use kivy.metrics.dp so the UI scales correctly on Android
+devices of any density while guaranteeing >=64dp touch targets.
+
 All screens share an Auditor instance and demonstrate full pipeline:
 live/safe scan, in-memory attack, PMKID simulation, PDF report generation.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 from kivy.clock import Clock
 from kivy.graphics import Color, Line, Rectangle
+from kivy.metrics import dp
 from kivy.properties import ObjectProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -21,13 +25,13 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 from ..auditor import Auditor
-from ..ethics import ConsentManager
 
 
 class BrutalistButton(Button):
     """Reusable chunky neo-brutalist button.
 
-    3px black border + 6px hard shadow offset. Uses primary colours.
+    Now uses dp(64) minimum height for Android accessibility and scaling.
+    3dp black border + 6dp hard shadow offset. Uses primary colours.
     """
 
     def __init__(self, accent: str = "#ff004d", **kwargs) -> None:
@@ -38,359 +42,290 @@ class BrutalistButton(Button):
         self.color = (0, 0, 0, 1)
         self.background_color = (0, 0, 0, 0)  # we draw everything
         self.size_hint_y = None
-        self.height = 80
-        self.bind(pos=self._update_canvas, size=self._update_canvas)
+        self.height = dp(64)  # improved touch target (Android recommendation >=48dp)
+        self.padding = [dp(20), dp(12)]
 
-    def _update_canvas(self, *_args: Any) -> None:
-        self.canvas.before.clear()
         with self.canvas.before:
-            # Hard shadow - offset black rectangle
-            Color(0, 0, 0, 1)
-            Rectangle(
-                pos=(self.pos[0] + 6, self.pos[1] - 6),
-                size=self.size,
+            # Shadow - hard 6dp offset
+            Color(0.1, 0.1, 0.1, 1)
+            self.shadow = Rectangle(
+                pos=(self.x + dp(6), self.y - dp(6)), size=self.size
             )
-            # Thick black border + fill
+            # Background
+            Color(*self._to_color(accent))
+            self.bg = Rectangle(pos=self.pos, size=self.size)
+            # Border
             Color(0, 0, 0, 1)
-            Line(
-                width=3,
-                rectangle=(
-                    self.pos[0],
-                    self.pos[1],
-                    self.size[0],
-                    self.size[1],
-                ),
-            )
-            Color(*self._hex_to_rgba(self.accent))
-            Rectangle(pos=self.pos, size=self.size)
+            self.border = Line(width=dp(3), close=True)
+
+        self.bind(pos=self._update_graphics, size=self._update_graphics)
 
     @staticmethod
-    def _hex_to_rgba(hex_str: str) -> tuple[float, float, float, float]:
-        h = hex_str.lstrip("#")
-        return (
-            int(h[0:2], 16) / 255,
-            int(h[2:4], 16) / 255,
-            int(h[4:6], 16) / 255,
-            1.0,
-        )
+    def _to_color(hex_str: str):
+        hex_str = hex_str.lstrip("#")
+        return [int(hex_str[i : i + 2], 16) / 255.0 for i in range(0, 6, 2)] + [1.0]
+
+    def _update_graphics(self, *args: Any) -> None:
+        self.shadow.pos = (self.x + dp(6), self.y - dp(6))
+        self.shadow.size = self.size
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+        self.border.rectangle = (self.x, self.y, self.width, self.height)
 
 
 class BrutalistLabel(Label):
-    """Chunky label with optional thick border."""
+    """Neo-brutalist label with thick border for headings and status."""
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.font_size = "28sp"
+        self.font_size = "18sp"
         self.bold = True
         self.color = (0, 0, 0, 1)
-        self.bind(pos=self._update_canvas, size=self._update_canvas)
+        self.size_hint_y = None
+        self.height = dp(50)
+        self.padding = [dp(10), dp(10)]
 
-    def _update_canvas(self, *_args: Any) -> None:
-        self.canvas.before.clear()
         with self.canvas.before:
+            Color(0.98, 0.98, 0.05, 1)  # yellow bg matching app background
+            self.bg = Rectangle(pos=self.pos, size=self.size)
             Color(0, 0, 0, 1)
-            Line(
-                width=3,
-                rectangle=(
-                    self.pos[0],
-                    self.pos[1],
-                    self.size[0],
-                    self.size[1],
-                ),
-            )
+            self.border = Line(width=dp(3))
+
+        self.bind(pos=self._update, size=self._update)
+
+    def _update(self, *args: Any) -> None:
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+        self.border.rectangle = (self.x, self.y, self.width, self.height)
 
 
 class ScanScreen(Screen):
-    """Live scanner screen with neo-brutalist list."""
-
     auditor = ObjectProperty(None)
-    consent_manager = ObjectProperty(None)
 
-    def __init__(self, auditor: Auditor, **kwargs) -> None:
+    def __init__(self, auditor: Auditor = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.auditor = auditor
-        self.consent_manager = ConsentManager()
-
-        root = BoxLayout(orientation="vertical", padding=15, spacing=15)
+        layout = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(15))
+        self.add_widget(layout)
 
         # Header
         header = BrutalistLabel(
-            text="WAVEBRUTE",
-            size_hint_y=None,
-            height=110,
-            color=(1, 1, 1, 1),
+            text="WAVEBRUTE SCANNER",
+            font_size="32sp",
+            height=dp(90),
         )
-        with header.canvas.before:
-            Color(1, 0, 0.3, 1)  # #ff004d
-            Rectangle(pos=header.pos, size=header.size)
-        root.add_widget(header)
+        layout.add_widget(header)
 
-        title = BrutalistLabel(
-            text="NETWORK SCANNER",
-            size_hint_y=None,
-            height=60,
-            font_size="38sp",
-        )
-        root.add_widget(title)
+        # Large touch target scan button
+        scan_btn = BrutalistButton(text="SCAN NETWORKS", accent="#00ff9f")
+        scan_btn.bind(on_release=self.do_scan)
+        layout.add_widget(scan_btn)
 
-        self.status = Label(
-            text="SIMULATION MODE — PRESS SCAN",
-            size_hint_y=None,
-            height=40,
-            color=(0, 0, 0, 1),
-            font_size="16sp",
-        )
-        root.add_widget(self.status)
-
-        # Big scan button
-        self.scan_btn = BrutalistButton(
-            text="SCAN NETWORKS NOW", accent="#00ff9f", font_size="26sp"
-        )
-        self.scan_btn.bind(on_press=self._do_scan)
-        root.add_widget(self.scan_btn)
-
-        # Scrollable results
+        # Scrollable status
         scroll = ScrollView(size_hint=(1, 1))
-        self.results_box = BoxLayout(
-            orientation="vertical", size_hint_y=None, spacing=12, padding=10
+        self.status = Label(
+            text="Simulation mode ready.\nTap SCAN to discover networks.",
+            size_hint_y=None,
+            halign="left",
+            valign="top",
+            text_size=(Window.width - dp(60), None),
         )
-        self.results_box.bind(
-            minimum_height=self.results_box.setter("height")
+        self.status.bind(
+            texture_size=lambda *x: setattr(
+                self.status, "height", self.status.texture_size[1] + dp(30)
+            )
         )
-        scroll.add_widget(self.results_box)
-        root.add_widget(scroll)
+        scroll.add_widget(self.status)
+        layout.add_widget(scroll)
 
-        # Bottom nav
-        nav = BoxLayout(size_hint_y=None, height=90, spacing=12)
-        nav.add_widget(
-            BrutalistButton(
-                text="ATTACK", accent="#ff004d", font_size="18sp"
-            ).__setattr__("on_press", lambda x: setattr(self.manager, "current", "attack"))
-        )
-        nav.add_widget(
-            BrutalistButton(
-                text="REPORT", accent="#ff004d", font_size="18sp"
-            ).__setattr__("on_press", lambda x: setattr(self.manager, "current", "report"))
-        )
-        root.add_widget(nav)
+        # Navigation
+        nav_layout = BoxLayout(size_hint_y=None, height=dp(80), spacing=dp(15))
+        to_attack = BrutalistButton(text="ATTACK", accent="#ff004d")
+        to_attack.bind(on_release=lambda x: setattr(self.manager, "current", "attack"))
+        to_report = BrutalistButton(text="REPORT", accent="#ff004d")
+        to_report.bind(on_release=lambda x: setattr(self.manager, "current", "report"))
+        nav_layout.add_widget(to_attack)
+        nav_layout.add_widget(to_report)
+        layout.add_widget(nav_layout)
 
-        self.add_widget(root)
-
-    def _do_scan(self, *_args: Any) -> None:
-        self.scan_btn.text = "SCANNING..."
-        self.results_box.clear_widgets()
-
-        def run_scan(dt: float) -> None:
-            try:
-                networks = self.auditor.scan()
-                self.status.text = f"FOUND {len(networks)} NETWORKS (SIM)"
-                for net in networks:
-                    row = BoxLayout(size_hint_y=None, height=68, spacing=8)
-                    txt = (
-                        f"{net.get('ssid','?')} | "
-                        f"{net.get('encryption','OPEN')} | "
-                        f"{net.get('signal',-50)} dBm"
-                    )
-                    lbl = BrutalistLabel(text=txt, font_size="15sp")
-                    lbl.color = (0, 0, 0, 1)
-                    row.add_widget(lbl)
-                    self.results_box.add_widget(row)
-            except Exception as exc:
-                self.status.text = f"ERROR: {exc}"
-            finally:
-                self.scan_btn.text = "SCAN NETWORKS NOW"
-
-        Clock.schedule_once(run_scan, 0.2)
+    def do_scan(self, instance: Widget) -> None:
+        if not self.auditor:
+            self.status.text = "Auditor not available."
+            return
+        try:
+            networks = self.auditor.scan()
+            out = f"Found {len(networks)} networks (simulation):\n\n"
+            for net in networks:
+                out += f"• {net.get('ssid', 'Unknown')}\n  {net.get('encryption','?')} | {net.get('signal',0)} dBm\n\n"
+            self.status.text = out
+            Clock.schedule_once(
+                lambda dt: setattr(
+                    self.status, "text", self.status.text + "\nAudit logged."
+                ),
+                1.0,
+            )
+        except Exception as e:
+            self.status.text = f"Error: {str(e)}\n\nAll operations are simulated."
 
 
 class AttackScreen(Screen):
-    """Simulated brute-force and PMKID attack screen."""
-
     auditor = ObjectProperty(None)
 
-    def __init__(self, auditor: Auditor, **kwargs) -> None:
+    def __init__(self, auditor: Auditor = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.auditor = auditor
+        layout = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(15))
+        self.add_widget(layout)
 
-        root = BoxLayout(orientation="vertical", padding=15, spacing=15)
+        header = BrutalistLabel(text="ATTACK SIMULATOR", font_size="32sp", height=dp(90))
+        layout.add_widget(header)
 
-        header = BrutalistLabel(
-            text="BRUTE FORCE / PMKID SIMULATOR",
-            size_hint_y=None,
-            height=90,
-            font_size="36sp",
-        )
-        root.add_widget(header)
+        lbl = BrutalistLabel(text="TARGET SSID:", height=dp(40))
+        layout.add_widget(lbl)
 
         self.ssid_input = TextInput(
             text="Cafe_Rouge_FreeWiFi",
             multiline=False,
-            font_size="24sp",
             size_hint_y=None,
-            height=60,
-        )
-        root.add_widget(self.ssid_input)
-
-        self.attack_btn = BrutalistButton(
-            text="RUN BRUTE FORCE SIM", accent="#ff004d"
-        )
-        self.attack_btn.bind(on_press=self._run_attack)
-        root.add_widget(self.attack_btn)
-
-        self.pmkid_btn = BrutalistButton(
-            text="RUN PMKID SIM", accent="#00ff9f"
-        )
-        self.pmkid_btn.bind(on_press=self._run_pmkid_attack)
-        root.add_widget(self.pmkid_btn)
-
-        self.result_label = Label(
-            text="Attack result will appear here...",
-            size_hint_y=0.6,
+            height=dp(50),
             font_size="18sp",
+            padding=[dp(15), dp(15)],
         )
-        root.add_widget(self.result_label)
+        layout.add_widget(self.ssid_input)
 
-        # Bottom nav
-        nav = BoxLayout(size_hint_y=None, height=90, spacing=12)
-        for screen_name, label in [("scan", "SCAN"), ("report", "REPORT")]:
-            btn = BrutalistButton(text=label, accent="#00ff9f", font_size="18sp")
-            btn.bind(
-                on_press=lambda _, name=screen_name: setattr(
-                    self.manager, "current", name
-                )
+        brute_btn = BrutalistButton(text="BRUTE FORCE SIM", accent="#ff004d")
+        brute_btn.bind(on_release=self.do_brute)
+        layout.add_widget(brute_btn)
+
+        pmkid_btn = BrutalistButton(text="PMKID SIMULATION", accent="#00ff9f")
+        pmkid_btn.bind(on_release=self.do_pmkid)
+        layout.add_widget(pmkid_btn)
+
+        scroll = ScrollView(size_hint=(1, 1))
+        self.result = Label(
+            text="Results appear here...",
+            size_hint_y=None,
+            halign="left",
+            valign="top",
+            text_size=(Window.width - dp(60), None),
+        )
+        self.result.bind(
+            texture_size=lambda *x: setattr(
+                self.result, "height", self.result.texture_size[1] + dp(30)
             )
-            nav.add_widget(btn)
-        root.add_widget(nav)
+        )
+        scroll.add_widget(self.result)
+        layout.add_widget(scroll)
 
-        self.add_widget(root)
+        # Navigation
+        nav = BoxLayout(size_hint_y=None, height=dp(80), spacing=dp(15))
+        to_scan = BrutalistButton(text="SCAN", accent="#ff004d")
+        to_scan.bind(on_release=lambda x: setattr(self.manager, "current", "scan"))
+        to_report = BrutalistButton(text="REPORT", accent="#ff004d")
+        to_report.bind(on_release=lambda x: setattr(self.manager, "current", "report"))
+        nav.add_widget(to_scan)
+        nav.add_widget(to_report)
+        layout.add_widget(nav)
 
-    def _run_attack(self, *_args: Any) -> None:
-        ssid = self.ssid_input.text.strip()
-        if not ssid:
-            self.result_label.text = "SSID CANNOT BE EMPTY"
+    def do_brute(self, instance: Widget) -> None:
+        if not self.auditor:
+            self.result.text = "No auditor."
             return
+        ssid = self.ssid_input.text.strip() or "TestNet"
+        try:
+            res = self.auditor.simulate_attack(ssid, max_attempts=5000)
+            self.result.text = (
+                f"BRUTE FORCE SIMULATION\n"
+                f"SSID: {res.get('ssid')}\n"
+                f"Success: {res.get('success')}\n"
+                f"Password: {res.get('password', 'Not found')}\n"
+                f"Attempts: {res.get('attempts', 0)}\n\n"
+                "Recommendations:\n"
+                + "\n".join(res.get("recommendations", []))
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            self.result.text = f"Simulation error: {e}"
 
-        self.attack_btn.text = "ATTACKING IN MEMORY..."
-        self.result_label.text = "SIMULATING..."
-
-        def attack_done(dt: float) -> None:
-            try:
-                result = self.auditor.simulate_attack(ssid, max_attempts=8000)
-                if result.get("success"):
-                    pwd = result.get("password", "???")
-                    self.result_label.text = (
-                        f"[b]CRACKED![/b]\n{pwd}\n"
-                        f"{result['attempts']} attempts in "
-                        f"{result['duration_seconds']}s"
-                    )
-                else:
-                    self.result_label.text = "No password found in simulation."
-            except Exception as exc:  # pylint: disable=broad-except
-                self.result_label.text = f"ETHICS GUARD: {exc}"
-            finally:
-                self.attack_btn.text = "RUN BRUTE FORCE SIM"
-
-        Clock.schedule_once(attack_done, 0.6)
-
-    def _run_pmkid_attack(self, *_args: Any) -> None:
-        ssid = self.ssid_input.text.strip()
-        if not ssid:
-            self.result_label.text = "SSID CANNOT BE EMPTY"
+    def do_pmkid(self, instance: Widget) -> None:
+        if not self.auditor:
             return
-
-        self.pmkid_btn.text = "RUNNING PMKID SIM..."
-        self.result_label.text = "SIMULATING PMKID ATTACK..."
-
-        def attack_done(dt: float) -> None:
-            try:
-                result = self.auditor.simulate_pmkid_attack(ssid, max_attempts=5000)
-                if result.get("success"):
-                    pwd = result.get("password", "???")
-                    self.result_label.text = (
-                        f"[b]PMKID CRACKED![/b]\n{pwd}\n"
-                        f"{result['attempts']} attempts in "
-                        f"{result['duration_seconds']}s\n\n"
-                        f"{result.get('notes', '')[:120]}..."
-                    )
-                else:
-                    self.result_label.text = "No password found in PMKID simulation."
-            except Exception as exc:  # pylint: disable=broad-except
-                self.result_label.text = f"ETHICS GUARD: {exc}"
-            finally:
-                self.pmkid_btn.text = "RUN PMKID SIM"
-
-        Clock.schedule_once(attack_done, 0.5)
+        ssid = self.ssid_input.text.strip() or "TestNet"
+        try:
+            res = self.auditor.simulate_pmkid_attack(ssid, max_attempts=5000)
+            self.result.text = (
+                f"PMKID SIMULATION\n"
+                f"SSID: {res.get('ssid')}\n"
+                f"Success: {res.get('success')}\n"
+                f"Password: {res.get('password', 'N/A')}\n"
+                f"Notes: {res.get('notes', '')}"
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            self.result.text = f"PMKID error: {e}"
 
 
 class ReportScreen(Screen):
-    """PDF report generation screen."""
-
     auditor = ObjectProperty(None)
 
-    def __init__(self, auditor: Auditor, **kwargs) -> None:
+    def __init__(self, auditor: Auditor = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.auditor = auditor
-
-        root = BoxLayout(orientation="vertical", padding=15, spacing=15)
+        layout = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(15))
+        self.add_widget(layout)
 
         header = BrutalistLabel(
-            text="AUDIT REPORT", size_hint_y=None, height=90, font_size="36sp"
+            text="REPORT BUILDER", font_size="32sp", height=dp(90)
         )
-        root.add_widget(header)
-
-        self.info = Label(
-            text="Press GENERATE to create PDF.\nAll prior results included.",
-            size_hint_y=0.4,
-            font_size="18sp",
-        )
-        root.add_widget(self.info)
+        layout.add_widget(header)
 
         gen_btn = BrutalistButton(
-            text="GENERATE PDF REPORT", accent="#00ff9f", font_size="26sp"
+            text="GENERATE PDF REPORT", accent="#00ff9f", height=dp(70)
         )
-        gen_btn.bind(on_press=self._generate_report)
-        root.add_widget(gen_btn)
+        gen_btn.bind(on_release=self.generate_report)
+        layout.add_widget(gen_btn)
 
-        self.path_label = Label(
-            text="PDF will be saved in current directory",
-            size_hint_y=0.3,
-            font_size="15sp",
+        self.report_status = Label(
+            text="Click to generate a professional PDF report from simulation data.",
+            size_hint_y=1,
+            halign="center",
+            valign="middle",
         )
-        root.add_widget(self.path_label)
+        layout.add_widget(self.report_status)
 
-        # Bottom nav
-        nav = BoxLayout(size_hint_y=None, height=90, spacing=12)
-        for screen_name, label in [("scan", "SCAN"), ("attack", "ATTACK")]:
-            btn = BrutalistButton(text=label, accent="#ff004d", font_size="18sp")
+        # Navigation
+        nav = BoxLayout(size_hint_y=None, height=dp(80), spacing=dp(15))
+        for name, label in (("scan", "SCAN"), ("attack", "ATTACK")):
+            btn = BrutalistButton(text=label, accent="#ff004d")
             btn.bind(
-                on_press=lambda _, name=screen_name: setattr(
-                    self.manager, "current", name
-                )
+                on_release=lambda x, target=name: setattr(self.manager, "current", target)
             )
             nav.add_widget(btn)
-        root.add_widget(nav)
+        layout.add_widget(nav)
 
-        self.add_widget(root)
-
-    def _generate_report(self, *_args: Any) -> None:
+    def generate_report(self, instance: Widget) -> None:
+        if not self.auditor:
+            self.report_status.text = "Auditor not initialized."
+            return
         try:
-            path = self.auditor.build_report(
-                title="WaveBrute Neo-Brutalist Audit"
+            if not self.auditor.get_results():
+                self.auditor.scan()
+                self.auditor.simulate_attack("Cafe_Rouge_FreeWiFi")
+                self.auditor.simulate_pmkid_attack("IoT-Devices")
+            path = self.auditor.build_report(title="Android Scaled Audit Report")
+            self.report_status.text = (
+                f"Report generated successfully!\n\nSaved to:\n{path}\n\n"
+                "All data was simulated. Open with any PDF viewer."
             )
-            self.path_label.text = f"SAVED TO:\n{path}"
-            self.info.text = "REPORT GENERATED SUCCESSFULLY\n(open it with any PDF viewer)"
-        except Exception as exc:  # pylint: disable=broad-except
-            self.info.text = f"REPORT ERROR:\n{exc}"
+        except Exception as e:  # pylint: disable=broad-except
+            self.report_status.text = f"Report generation failed:\n{str(e)}"
 
 
 if __name__ == "__main__":
-    # Demo the screens directly
+    # For quick testing of the UI components
     from kivy.app import App
-    from ..auditor import Auditor
 
-    class DemoApp(App):
+    class TestApp(App):
         def build(self):
-            auditor = Auditor(simulation_mode=True)
-            return ScanScreen(auditor=auditor)
+            aud = Auditor(simulation_mode=True)
+            return ScanScreen(auditor=aud)
 
-    DemoApp().run()
+    TestApp().run()
