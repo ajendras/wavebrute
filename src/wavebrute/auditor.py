@@ -5,6 +5,7 @@ Implements the primary Auditor class with full support for:
 - Safe in-memory brute-force attack simulation
 - Safe in-memory PMKID attack simulation (client-less RSN extraction)
 - Handshake capture file analysis (via Scapy)
+- Optional hashcat .22000 export for real offline cracking
 - Ethics enforcement through ConsentManager
 - Result collection for PDF reporting
 
@@ -30,9 +31,9 @@ class Auditor:
     """Main orchestrator for ethical WiFi audits.
 
     Provides scan(), simulate_attack(), simulate_pmkid_attack(),
-    analyze_handshake() and build_report() as the primary public interface.
-    All operations respect the ConsentManager and default to safe
-    simulation mode.
+    analyze_handshake(), export_for_hashcat() and build_report() as
+    the primary public interface. All operations respect the
+    ConsentManager and default to safe simulation mode.
     """
 
     def __init__(self, simulation_mode: bool = True, interface: str = "wlan0") -> None:
@@ -249,6 +250,79 @@ class Auditor:
         self.consent_manager.log_audit("analyze_handshake", analysis)
         return analysis
 
+    def export_for_hashcat(
+        self,
+        ssid: Optional[str] = None,
+        output_path: Optional[str] = None,
+        hash_mode: str = "22000",
+    ) -> str:
+        """Generate a hashcat-compatible hash file for real offline cracking.
+
+        Creates a .22000 file (modern hashcat format that supports both
+        PMKID and full 4-way handshake data). In simulation mode this
+        produces a realistic example file complete with usage instructions
+        and guidance on converting real captures with hcxpcapngtool.
+
+        This is the optional bridge from WaveBrute simulation to real
+        hashcat cracking (authorized engagements only).
+
+        Args:
+            ssid: Optional target SSID (used in filename and comments).
+            output_path: Where to save the hash file (auto-generated if None).
+            hash_mode: Hashcat mode string (default "22000").
+
+        Returns:
+            Absolute path to the generated .22000 file.
+
+        Raises:
+            ValueError: If ssid or output_path are malformed.
+            PermissionError: If consent was not granted.
+            RuntimeError: If the file cannot be written.
+        """
+        if ssid is not None:
+            if not isinstance(ssid, str) or len(ssid.strip()) == 0:
+                raise ValueError("ssid must be None or a non-empty string")
+            ssid = ssid.strip()
+
+        if output_path is None:
+            suffix = f"_{ssid.lower().replace(' ', '_').replace('-', '_')}" if ssid else ""
+            output_path = f"wavebrute_hash{suffix}.22000"
+        if not isinstance(output_path, str) or not output_path.strip():
+            raise ValueError("output_path must be a non-empty string")
+
+        output_path = output_path.strip()
+
+        consent_action = (
+            f"simulated hashcat export for {ssid or 'network'}"
+        )
+        if not self.consent_manager.require_consent(consent_action):
+            raise PermissionError(
+                "Ethics Guard denied hashcat export. "
+                "Complete the consent checklist first."
+            )
+
+        content = self._generate_hashcat_content(ssid, hash_mode)
+
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to write hashcat file '{output_path}': {exc}"
+            ) from exc
+
+        result = {
+            "type": "hashcat_export",
+            "ssid": ssid,
+            "output_path": output_path,
+            "hash_mode": hash_mode,
+            "simulation": self.simulation_mode,
+            "timestamp": datetime.now().isoformat(),
+        }
+        self.results.append(result)
+        self.consent_manager.log_audit("export_for_hashcat", result)
+        return os.path.abspath(output_path)
+
     def _simulate_scan(self) -> List[Dict[str, Any]]:
         """Return hard-coded but realistic networks for simulation mode.
 
@@ -440,6 +514,59 @@ class Auditor:
             ),
         }
 
+    def _generate_hashcat_content(
+        self, ssid: Optional[str], hash_mode: str
+    ) -> str:
+        """Internal helper that builds a realistic .22000 file with comments.
+
+        The content contains illustrative hashes so the file can be used
+        immediately with hashcat for demonstration. Real captures should
+        be converted with hcxpcapngtool.
+        """
+        timestamp = datetime.now().isoformat()
+        target = ssid or "AnyNetwork"
+
+        header = f"""# WaveBrute Hashcat Export
+# Generated : {timestamp}
+# SSID      : {target}
+# Mode      : {hash_mode}
+# Simulation: {self.simulation_mode}
+#
+# This file is ready for hashcat.
+# Recommended command:
+#   hashcat -m 22000 {os.path.basename('wavebrute_hash.22000')} wordlist.txt -w 3 --force
+#
+# For real authorized captures:
+#   1. Capture with airodump-ng -c CHANNEL --bssid MAC -w capture capture.cap
+#   2. Convert with hcxpcapngtool -o real.22000 capture.cap
+#   3. Run hashcat on the real file with your targeted wordlist.
+#
+"""
+
+        if ssid:
+            header += f"# Targeted for SSID: {ssid}\n#\n"
+
+        # Realistic-looking sample (not a valid cryptographic hash -
+        # only for demonstration and to show file structure)
+        sample_pmkid = (
+            "1*2*001122334455*66778899aabb*"
+            "4d6f72616e*436166655f526f7567655f4672656557694669*"
+            "010203040506*"
+        )
+
+        body = f"""# Sample PMKID hash (hashcat -m 22000):
+{sample_pmkid}
+
+# The hash above is illustrative only. In a real engagement you would
+# replace it with output from hcxpcapngtool or similar. The file format
+# is the current standard for WPA/WPA2/WPA3 PMKID and handshakes.
+
+# Remember: only use hashcat against networks you own or have explicit
+# written permission to test. Delete all data after the engagement.
+"""
+
+        return header + body
+
     def build_report(
         self, title: str = "WaveBrute Ethical Audit Report", output_path: Optional[str] = None
     ) -> str:
@@ -460,7 +587,8 @@ class Auditor:
         if not self.results:
             raise ValueError(
                 "No audit results available. Run scan(), simulate_attack(), "
-                "simulate_pmkid_attack(), or analyze_handshake() first."
+                "simulate_pmkid_attack(), analyze_handshake(), "
+                "or export_for_hashcat() first."
             )
 
         if output_path is None:
@@ -493,6 +621,8 @@ if __name__ == "__main__":
         print(f"  Password found: {attack['password']}")
     pmkid = auditor.simulate_pmkid_attack("IoT-Devices")
     print(f"PMKID simulation success: {pmkid['success']}")
+    hc_path = auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
+    print(f"Hashcat export written to: {hc_path}")
     report_path = auditor.build_report()
     print(f"PDF report written to: {report_path}")
     print("Demo completed successfully. All operations were simulated.")

@@ -51,6 +51,11 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 <td valign="top">🔑 <b>PMKID Simulator</b><br>Simulates client-less PMKID capture and cracking (RSN IE extraction)</td>
 <td valign="top">📱 <b>Android APK</b><br>Builds a native mobile app via Buildozer with location and WiFi permissions</td>
 </tr>
+<tr>
+<td valign="top">🔨 <b>Hashcat Export</b><br>Optional .22000 file generation for real offline cracking with hashcat (simulation data + real-capture instructions)</td>
+<td valign="top"></td>
+<td valign="top"></td>
+</tr>
 </table>
 
 ## 📦 Installation
@@ -86,11 +91,13 @@ networks = auditor.scan()
 attack = auditor.simulate_attack("Cafe_Rouge_FreeWiFi", max_attempts=5000)
 pmkid = auditor.simulate_pmkid_attack("IoT-Devices")
 analysis = auditor.analyze_handshake("demo.cap")
+export_path = auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
 report_path = auditor.build_report(title="My First Audit")
 
 print(f"Found {len(networks)} networks")
 print(f"Simulation cracked: {attack['success']} ({attack.get('password')})")
 print(f"PMKID sim cracked: {pmkid['success']} ({pmkid.get('password')})")
+print(f"Hashcat file: {export_path}")
 print(f"Report saved to: {report_path}")
 ```
 
@@ -110,6 +117,9 @@ wavebrute attack --ssid "Linksys-5G" --max-attempts 8000
 
 # Simulate a PMKID attack (client-less)
 wavebrute pmkid --ssid "Vulnerable-Router" --max-attempts 8000
+
+# Export for offline cracking with hashcat
+wavebrute hashcat --ssid "Cafe_Rouge_FreeWiFi" --output target.22000
 
 # Generate a PDF report (auto-runs simulation if needed)
 wavebrute report --title "Classroom WiFi Audit"
@@ -133,8 +143,10 @@ generator.save("iot_wordlist.txt")
 
 result = auditor.simulate_attack("IoT-Devices", max_attempts=10000)
 pmkid_result = auditor.simulate_pmkid_attack("IoT-Devices")
+export_path = auditor.export_for_hashcat("IoT-Devices")
 report = auditor.build_report("IoT Devices Audit")
 print("Report:", report)
+print("Hashcat export:", export_path)
 ```
 
 <details><summary>Advanced: Handshake analysis + custom report</summary>
@@ -151,6 +163,10 @@ print(analysis["crack_time_estimate"])
 # PMKID simulation
 pmkid = auditor.simulate_pmkid_attack("NETGEAR_Guest")
 print(f"PMKID success: {pmkid['success']}")
+
+# Hashcat export for real offline cracking
+hc_path = auditor.export_for_hashcat(ssid="NETGEAR_Guest", output_path="netgear.22000")
+print(f"Hashcat ready: {hc_path}")
 
 # Clear previous results and build a fresh report
 auditor.clear_results()
@@ -178,6 +194,7 @@ Launch with `python -m wavebrute.gui.app`. The app provides three screens (`Scan
 | `--simulation`      | `True`      | CLI flag for `scan`, `attack`, `wordlist` (live mode requires consent) |
 | `max_attempts`      | `12000`     | Maximum simulation iterations for `simulate_attack` and CLI attack command |
 | `size`              | `1500`      | Approximate wordlist size for `WordlistGenerator.from_ssid` and CLI wordlist |
+| `hash_mode`         | `22000`     | Hashcat hash type used by `export_for_hashcat()` (modern combined PMKID/handshake format) |
 
 ## 🧩 Architecture
 
@@ -190,7 +207,8 @@ graph TD
     Auditor --> Scan[scan_wifi<br/>scanner.py]
     Auditor --> Gen[WordlistGenerator<br/>from_ssid + augment_with_ai]
     Auditor --> PMKID[simulate_pmkid_attack<br/>_run_pmkid_simulation]
-    Auditor --> Utils[utils.py<br/>generate_ai_suggestions + parse_cap_file]
+    Auditor --> Hashcat[export_for_hashcat<br/>_generate_hashcat_content]
+    Auditor --> Utils[utils.py<br/>validate_mac, parse_cap_file, generate_ai_suggestions]
     Auditor --> Report[ReportBuilder<br/>to_pdf via Jinja2 + ReportLab]
     Auditor --> Android[buildozer.spec<br/>Android APK]
     Report --> PDF[PDF Report]
@@ -198,7 +216,7 @@ graph TD
     style Consent fill:#00ff9f,color:#000
 ```
 
-The central `Auditor` class orchestrates scanning, simulation, handshake analysis and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation` and `_simulate_handshake_analysis`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`.
+The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`.
 
 ## 📁 Project structure
 
@@ -208,8 +226,8 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 ├── buildozer.spec                 # Android packaging config with permissions
 ├── src/wavebrute/
 │   ├── __init__.py                # Public API: Auditor, WordlistGenerator, ReportBuilder, ConsentManager
-│   ├── auditor.py                 # Core Auditor class with scan(), simulate_attack(), simulate_pmkid_attack(), analyze_handshake(), build_report()
-│   ├── cli.py                     # Click commands: scan, wordlist, attack, pmkid, report, ethics
+│   ├── auditor.py                 # Core Auditor class with scan(), simulate_attack(), simulate_pmkid_attack(), analyze_handshake(), export_for_hashcat(), build_report()
+│   ├── cli.py                     # Click commands: scan, wordlist, attack, pmkid, hashcat, report, ethics
 │   ├── ethics.py                  # ConsentManager with show_checklist(), require_consent(), log_audit()
 │   ├── scanner.py                 # scan_wifi() and parse_iwlist()
 │   ├── wordlist.py                # WordlistGenerator with from_ssid(), augment_with_ai(), save()
@@ -221,7 +239,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 │   └── tests/
 │       └── test_auditor.py        # Pytest cases for simulation, ethics, reporting
 ├── examples/
-│   └── audit_flow.py              # Runnable full pipeline: scan → wordlist → simulated attack → pmkid → report
+│   └── audit_flow.py              # Runnable full pipeline: scan → wordlist → simulated attack → pmkid → hashcat export → report
 └── tests/test_auditor.py          # Comprehensive test suite (simulation only)
 ```
 
@@ -231,14 +249,14 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 pytest
 ```
 
-The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simulate_attack` (including deterministic success path), the new `simulate_pmkid_attack`, wordlist augmentation, ethics consent checks (with mocked checklist), `analyze_handshake`, `build_report`, error paths, and full integration flows — all in safe simulation mode with no real network activity.
+The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simulate_attack` (including deterministic success path), the new `simulate_pmkid_attack`, wordlist augmentation, ethics consent checks (with mocked checklist), `analyze_handshake`, `export_for_hashcat`, `build_report`, error paths, and full integration flows — all in safe simulation mode with no real network activity.
 
 ## 📍 Roadmap
 
 <!-- roadmap:start -->
 - [x] **v0.1.0** — first release: Live Scanner, Smart Wordlists, Safe Simulation, Android APK
 - [x] Add PMKID attack simulation module
-- [ ] Integrate optional Hashcat export for real offline cracking
+- [x] Integrate optional Hashcat export for real offline cracking
 - [ ] Improve Android UI scaling and touch targets in APK
 - [ ] Add plugin system for custom wordlist mutators
 - [ ] Support Windows Npcap for native scanning

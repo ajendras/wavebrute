@@ -1,6 +1,6 @@
 """CLI entrypoint for WaveBrute.
 
-The ``wavebrute`` command provides four main subcommands that mirror the
+The ``wavebrute`` command provides five main subcommands that mirror the
 core library functionality. Every command defaults to simulation_mode=True
 for safety. Use --no-simulation only after completing the ethics checklist.
 
@@ -12,6 +12,7 @@ Examples:
     wavebrute wordlist "MyNetwork" --size 2000 --output custom.txt
     wavebrute attack --ssid "Cafe_Rouge_FreeWiFi"
     wavebrute pmkid --ssid "Vulnerable-Router"
+    wavebrute hashcat --ssid "TargetNet"
     wavebrute report --title "My Audit"
 """
 
@@ -217,6 +218,46 @@ def pmkid(ssid: str, max_attempts: int) -> None:
 
 
 @main.command()
+@click.option("--ssid", "-s", default=None, help="Target SSID (optional)")
+@click.option(
+    "--output",
+    "-o",
+    default=None,
+    type=click.Path(dir_okay=False, writable=True, resolve_path=True),
+    help="Output .22000 file (auto-generated if omitted)",
+)
+def hashcat(ssid: Optional[str], output: Optional[str]) -> None:
+    """Export data for offline cracking with hashcat.
+
+    Generates a .22000 file (modern hashcat format) containing
+    illustrative hashes and detailed instructions. For real captures
+    combine with hcxpcapngtool. Only use in authorized engagements.
+    """
+    auditor = Auditor(simulation_mode=True)
+    click.echo(click.style("\n=== HASHCAT OFFLINE EXPORT ===", fg="magenta", bold=True))
+    click.echo("Mode        : SAFE SIMULATION + HASHCAT PREP")
+    if ssid:
+        click.echo(f"Target SSID : {ssid}")
+
+    try:
+        path = auditor.export_for_hashcat(
+            ssid=ssid,
+            output_path=output,
+        )
+        click.echo("\n" + "=" * 60)
+        click.echo(click.style("✅ HASHCAT FILE GENERATED SUCCESSFULLY", fg="green", bold=True))
+        click.echo(f"Location : {path}")
+        click.echo("\nUse with:")
+        click.echo(f"  hashcat -m 22000 {Path(path).name} wordlist.txt")
+        click.echo("\nOpen the generated file for full instructions on real captures.")
+        click.echo("=" * 60)
+    except PermissionError as exc:
+        click.echo(click.style(f"ETHICS GUARD: {exc}", fg="red", bold=True))
+    except Exception as exc:  # pylint: disable=broad-except
+        click.echo(click.style(f"Export error: {exc}", fg="red"))
+
+
+@main.command()
 @click.option(
     "--title",
     default="WaveBrute Ethical Audit Report",
@@ -243,6 +284,7 @@ def report(title: str, output: Optional[str]) -> None:
         auditor.simulate_attack("Cafe_Rouge_FreeWiFi")
         auditor.simulate_pmkid_attack("IoT-Devices")
         auditor.analyze_handshake("demo.cap")  # will simulate
+        auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
 
     click.echo(click.style("\n=== REPORT BUILDER ===", fg="magenta", bold=True))
     click.echo(f"Title : {title}")

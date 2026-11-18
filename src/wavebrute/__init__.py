@@ -2,18 +2,21 @@
 
 A loud, neo-brutalist GUI application for responsible wireless security testing.
 Supports live scanning (with mandatory consent), safe in-memory simulations,
-targeted wordlist generation, handshake analysis, PDF reporting, and
-Android deployment via Buildozer.
+targeted wordlist generation, handshake analysis, PDF reporting, optional
+hashcat .22000 export for real offline cracking, and Android deployment via
+Buildozer.
 
 All live operations are guarded by an Ethics Guard. Simulation mode is
 enabled by default for classrooms and training. The new simulate_pmkid_attack()
-demonstrates client-less RSN PMKID extraction and cracking.
+and export_for_hashcat() demonstrate client-less RSN PMKID extraction,
+cracking simulation, and direct interoperability with hashcat.
 
 Public API:
     from wavebrute import Auditor, WordlistGenerator, ReportBuilder, ConsentManager
 
     auditor = Auditor(simulation_mode=True)
     auditor.simulate_pmkid_attack("MyNetwork")
+    auditor.export_for_hashcat("MyNetwork")
 """
 
 __version__ = "0.1.0"
