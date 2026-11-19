@@ -53,7 +53,7 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 </tr>
 <tr>
 <td valign="top">🔨 <b>Hashcat Export</b><br>Optional .22000 file generation for real offline cracking with hashcat (simulation data + real-capture instructions)</td>
-<td valign="top"></td>
+<td valign="top">🔌 <b>Plugin System</b><br>Register custom Python mutators or load .py plugins to extend wordlist generation with domain-specific rules, leetspeak, corporate patterns etc.</td>
 <td valign="top"></td>
 </tr>
 </table>
@@ -81,10 +81,17 @@ Run tests with `pytest`.
 ## ⚡ Quick start
 
 ```python
-from wavebrute import Auditor
+from wavebrute import Auditor, WordlistGenerator
 
 # Safe simulation mode (default)
 auditor = Auditor(simulation_mode=True, interface="wlan0")
+
+# Register a custom mutator (or load from a .py plugin file)
+def company_specific_mutator(word: str):
+    return [word + "2025", word.replace("a", "@"), word[::-1]]
+
+auditor.register_mutator(company_specific_mutator)
+# auditor.load_mutator_plugin("plugins/corporate_rules.py")
 
 # Full pipeline in one go
 networks = auditor.scan()
@@ -109,8 +116,8 @@ print(f"Report saved to: {report_path}")
 # Scan in simulation mode
 wavebrute scan --simulation
 
-# Generate a targeted wordlist
-wavebrute wordlist "Cafe_Rouge_FreeWiFi" --size 2000 --output wordlist.txt
+# Generate a targeted wordlist (with optional custom mutator plugins)
+wavebrute wordlist "Cafe_Rouge_FreeWiFi" --size 2000 --output wordlist.txt --plugin plugins/leet.py
 
 # Run a safe brute-force simulation
 wavebrute attack --ssid "Linksys-5G" --max-attempts 8000
@@ -136,10 +143,17 @@ cm = ConsentManager()
 # Consent is auto-approved for simulations
 print(cm.require_consent("simulated attack on TestNet"))  # True
 
+# Plugin system for custom wordlist mutators
+def my_mutator(word: str):
+    """Example custom mutator - can be registered or loaded from a .py file."""
+    return [word + "!", word.upper() + "2024", word[::-1]]
+
+auditor.register_mutator(my_mutator)
+# auditor.load_mutator_plugin("./plugins/company_patterns.py")
+
 networks = auditor.scan()
-generator = WordlistGenerator()
-wordlist = generator.from_ssid("IoT-Devices", size=800)
-generator.save("iot_wordlist.txt")
+wordlist = auditor.wordlist_generator.from_ssid("IoT-Devices", size=800)  # uses registered mutators
+auditor.wordlist_generator.save("iot_wordlist.txt", words=wordlist)
 
 result = auditor.simulate_attack("IoT-Devices", max_attempts=10000)
 pmkid_result = auditor.simulate_pmkid_attack("IoT-Devices")
@@ -156,11 +170,17 @@ from wavebrute import Auditor
 
 auditor = Auditor(simulation_mode=True)
 
+# Register domain-specific mutator before running simulations
+def department_mutator(word):
+    return [word + "dept2025", "wifi" + word]
+
+auditor.register_mutator(department_mutator)
+
 # Analyze a capture (falls back to realistic simulation if file is missing)
 analysis = auditor.analyze_handshake("handshake.cap")
 print(analysis["crack_time_estimate"])
 
-# PMKID simulation
+# PMKID simulation (uses registered mutators in wordlist generation)
 pmkid = auditor.simulate_pmkid_attack("NETGEAR_Guest")
 print(f"PMKID success: {pmkid['success']}")
 
@@ -184,6 +204,8 @@ print("Generated:", path)
 
 Launch with `python -m wavebrute.gui.app`. The app provides three screens (`ScanScreen`, `AttackScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 3px borders and 6dp hard shadows. The Attack screen includes a dedicated PMKID simulation button. **Android UI now uses `kivy.metrics.dp` for all sizes with minimum 64dp touch targets for proper scaling and finger-friendly interaction across device densities.**
 
+The plugin system is available through the shared `Auditor` instance (register_mutator / load_mutator_plugin) before starting an attack or wordlist generation.
+
 </details>
 
 ## 🔧 Configuration
@@ -196,6 +218,7 @@ Launch with `python -m wavebrute.gui.app`. The app provides three screens (`Scan
 | `max_attempts`      | `12000`     | Maximum simulation iterations for `simulate_attack` and CLI attack command |
 | `size`              | `1500`      | Approximate wordlist size for `WordlistGenerator.from_ssid` and CLI wordlist |
 | `hash_mode`         | `22000`     | Hashcat hash type used by `export_for_hashcat()` (modern combined PMKID/handshake format) |
+| `mutators`          | `[]`        | List of registered mutator callables (via `register_mutator()` or loaded plugins). Built-ins include number suffixes, leetspeak and case variations. |
 
 ## 🧩 Architecture
 
@@ -206,7 +229,7 @@ graph TD
     CLI & GUI --> Auditor
     Auditor --> Consent[ConsentManager<br/>require_consent + log_audit]
     Auditor --> Scan[scan_wifi<br/>scanner.py]
-    Auditor --> Gen[WordlistGenerator<br/>from_ssid + augment_with_ai]
+    Auditor --> Gen[WordlistGenerator<br/>from_ssid + mutators + plugins]
     Auditor --> PMKID[simulate_pmkid_attack<br/>_run_pmkid_simulation]
     Auditor --> Hashcat[export_for_hashcat<br/>_generate_hashcat_content]
     Auditor --> Utils[utils.py<br/>validate_mac, parse_cap_file, generate_ai_suggestions]
@@ -217,7 +240,7 @@ graph TD
     style Consent fill:#00ff9f,color:#000
 ```
 
-The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`.
+The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`. The new plugin system is exposed via `Auditor.register_mutator()` / `Auditor.load_mutator_plugin()` (and directly on `WordlistGenerator`).
 
 ## 📁 Project structure
 
@@ -231,7 +254,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 │   ├── cli.py                     # Click commands: scan, wordlist, attack, pmkid, hashcat, report, ethics
 │   ├── ethics.py                  # ConsentManager with show_checklist(), require_consent(), log_audit()
 │   ├── scanner.py                 # scan_wifi() and parse_iwlist()
-│   ├── wordlist.py                # WordlistGenerator with from_ssid(), augment_with_ai(), save()
+│   ├── wordlist.py                # WordlistGenerator with from_ssid(), augment_with_ai(), save(), register_mutator(), load_mutator_plugin()
 │   ├── report.py                  # ReportBuilder with from_results(), to_pdf(), render_template()
 │   ├── utils.py                   # validate_mac(), parse_cap_file(), generate_ai_suggestions()
 │   ├── gui/
@@ -250,7 +273,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 pytest
 ```
 
-The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simulate_attack` (including deterministic success path), the new `simulate_pmkid_attack`, wordlist augmentation, ethics consent checks (with mocked checklist), `analyze_handshake`, `export_for_hashcat`, `build_report`, error paths, and full integration flows — all in safe simulation mode with no real network activity.
+The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simulate_attack` (including deterministic success path), the new `simulate_pmkid_attack`, wordlist augmentation, ethics consent checks (with mocked checklist), `analyze_handshake`, `export_for_hashcat`, `build_report`, error paths, full integration flows, **and the new plugin system** (custom mutators + dynamic plugin loading from .py files) — all in safe simulation mode with no real network activity.
 
 ## 📍 Roadmap
 
@@ -259,7 +282,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Add PMKID attack simulation module
 - [x] Integrate optional Hashcat export for real offline cracking
 - [x] Improve Android UI scaling and touch targets in APK
-- [ ] Add plugin system for custom wordlist mutators
+- [x] Add plugin system for custom wordlist mutators
 - [ ] Support Windows Npcap for native scanning
 - [ ] Train and bundle tiny on-device model for password prediction
 - [ ] Export reports directly to Markdown and HTML

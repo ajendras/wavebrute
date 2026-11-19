@@ -8,6 +8,7 @@ Implements the primary Auditor class with full support for:
 - Optional hashcat .22000 export for real offline cracking
 - Ethics enforcement through ConsentManager
 - Result collection for PDF reporting
+- Plugin system for custom wordlist mutators (register_mutator, load_mutator_plugin)
 
 All methods include strict input validation and helpful error messages.
 Simulation mode is the secure default.
@@ -16,7 +17,7 @@ Simulation mode is the secure default.
 import os
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from scapy.all import rdpcap  # graceful fallback if unavailable
 
@@ -31,9 +32,11 @@ class Auditor:
     """Main orchestrator for ethical WiFi audits.
 
     Provides scan(), simulate_attack(), simulate_pmkid_attack(),
-    analyze_handshake(), export_for_hashcat() and build_report() as
-    the primary public interface. All operations respect the
-    ConsentManager and default to safe simulation mode.
+    analyze_handshake(), export_for_hashcat(), build_report(),
+    register_mutator() and load_mutator_plugin() as the primary
+    public interface. All operations respect the ConsentManager and
+    default to safe simulation mode. The integrated WordlistGenerator
+    supports custom mutator plugins.
     """
 
     def __init__(self, simulation_mode: bool = True, interface: str = "wlan0") -> None:
@@ -58,8 +61,25 @@ class Auditor:
         self.simulation_mode = simulation_mode
         self.interface = interface.strip()
         self.consent_manager = ConsentManager()
+        self.wordlist_generator = WordlistGenerator()
         self.results: List[Dict[str, Any]] = []
         self.audit_log: List[Dict[str, Any]] = []
+
+    def register_mutator(self, mutator: Callable[[str], List[str]]) -> None:
+        """Register a custom wordlist mutator.
+
+        See WordlistGenerator.register_mutator() for full documentation.
+        Registered mutators are used by simulate_attack(), simulate_pmkid_attack()
+        and any direct calls to wordlist_generator.from_ssid().
+        """
+        self.wordlist_generator.register_mutator(mutator)
+
+    def load_mutator_plugin(self, plugin_path: str) -> None:
+        """Load a custom mutator plugin from a Python file.
+
+        See WordlistGenerator.load_mutator_plugin() for full documentation.
+        """
+        self.wordlist_generator.load_mutator_plugin(plugin_path)
 
     def scan(self, interface: Optional[str] = None) -> List[Dict[str, Any]]:
         """Scan for nearby WiFi networks.
@@ -127,7 +147,8 @@ class Auditor:
         """Perform a completely safe, in-memory brute-force simulation.
 
         No packets are transmitted. Demonstrates cracking logic, timing,
-        and AI-augmented wordlist effectiveness.
+        and AI-augmented wordlist effectiveness. Uses the Auditor's
+        WordlistGenerator (including any registered custom mutators).
 
         Args:
             ssid: Target network SSID.
@@ -174,6 +195,7 @@ class Auditor:
         PMKID attacks allow cracking without capturing a full 4-way handshake
         by extracting the PMKID from the AP's response to a special association.
         This is common on many consumer routers. No real packets are sent.
+        Uses the Auditor's WordlistGenerator (including any registered custom mutators).
 
         Args:
             ssid: Target network SSID.
@@ -379,12 +401,12 @@ class Auditor:
     ) -> Dict[str, Any]:
         """Internal simulation engine.
 
-        Generates a wordlist, augments it with AI suggestions, then
-        searches for a deterministic weak password derived from the SSID.
+        Uses the shared self.wordlist_generator (with any registered custom
+        mutators) and augments it with AI suggestions.
         """
         start_time = time.time()
 
-        generator = WordlistGenerator()
+        generator = self.wordlist_generator
         if wordlist_path and os.path.isfile(wordlist_path):
             # In a full implementation this would load the file;
             # here we generate a targeted list for consistency.
@@ -442,12 +464,13 @@ class Auditor:
     ) -> Dict[str, Any]:
         """Internal engine for PMKID simulation.
 
-        Uses WordlistGenerator + AI hints. The cracking condition is tuned
-        to demonstrate typical weak passwords found in PMKID captures.
+        Uses the shared self.wordlist_generator (with any registered custom
+        mutators) + AI hints. The cracking condition is tuned to demonstrate
+        typical weak passwords found in PMKID captures.
         """
         start_time = time.time()
 
-        generator = WordlistGenerator()
+        generator = self.wordlist_generator
         wordlist = generator.from_ssid(ssid, size=800)
         ai_suggestions = generate_ai_suggestions(ssid)
         wordlist = list(dict.fromkeys(ai_suggestions + wordlist))  # dedup
@@ -625,4 +648,11 @@ if __name__ == "__main__":
     print(f"Hashcat export written to: {hc_path}")
     report_path = auditor.build_report()
     print(f"PDF report written to: {report_path}")
+
+    print("\n=== Plugin system demo ===")
+    def demo_mutator(word: str):
+        return [word + "PLUGIN", word.upper() + "2025"]
+    auditor.register_mutator(demo_mutator)
+    attack2 = auditor.simulate_attack("TestNet")
+    print("Custom mutator registered and used.")
     print("Demo completed successfully. All operations were simulated.")

@@ -11,10 +11,16 @@ enabled by default for classrooms and training. The new simulate_pmkid_attack()
 and export_for_hashcat() demonstrate client-less RSN PMKID extraction,
 cracking simulation, and direct interoperability with hashcat.
 
+The plugin system (register_mutator / load_mutator_plugin) lets users extend
+wordlist generation with arbitrary Python logic or external .py plugin files.
+
 Public API:
-    from wavebrute import Auditor, WordlistGenerator, ReportBuilder, ConsentManager
+    from wavebrute import (
+        Auditor, WordlistGenerator, ReportBuilder, ConsentManager, register_mutator
+    )
 
     auditor = Auditor(simulation_mode=True)
+    auditor.register_mutator(lambda w: [w + "2025"])
     auditor.simulate_pmkid_attack("MyNetwork")
     auditor.export_for_hashcat("MyNetwork")
 """
@@ -22,7 +28,7 @@ Public API:
 __version__ = "0.1.0"
 
 from .auditor import Auditor
-from .wordlist import WordlistGenerator
+from .wordlist import WordlistGenerator, register_mutator
 from .report import ReportBuilder
 from .ethics import ConsentManager
 
@@ -31,5 +37,6 @@ __all__ = [
     "WordlistGenerator",
     "ReportBuilder",
     "ConsentManager",
+    "register_mutator",
     "__version__",
 ]
