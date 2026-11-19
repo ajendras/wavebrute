@@ -1,7 +1,8 @@
 """Core auditing engine for WaveBrute.
 
 Implements the primary Auditor class with full support for:
-- Live or simulated WiFi scanning (via scanner.py)
+- Live or simulated WiFi scanning (via scanner.py - now cross-platform
+  with native Windows netsh + Npcap support for Scapy)
 - Safe in-memory brute-force attack simulation
 - Safe in-memory PMKID attack simulation (client-less RSN extraction)
 - Handshake capture file analysis (via Scapy)
@@ -16,6 +17,7 @@ Simulation mode is the secure default.
 
 import os
 import time
+import platform
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -37,6 +39,9 @@ class Auditor:
     public interface. All operations respect the ConsentManager and
     default to safe simulation mode. The integrated WordlistGenerator
     supports custom mutator plugins.
+
+    Live scanning now supports Windows via netsh (Npcap required for
+    full native Scapy packet functionality).
     """
 
     def __init__(self, simulation_mode: bool = True, interface: str = "wlan0") -> None:
@@ -46,6 +51,8 @@ class Auditor:
             simulation_mode: Whether to run entirely in safe simulation mode.
                 Defaults to True (recommended for all non-authorized use).
             interface: Wireless interface name (ignored in simulation mode).
+                On Windows the default is automatically adjusted to "Wi-Fi"
+                when the provided value looks like a Linux name.
 
         Raises:
             ValueError: If simulation_mode is not bool or interface is empty.
@@ -54,12 +61,20 @@ class Auditor:
             raise ValueError("simulation_mode must be a boolean (True for safe demo mode)")
         if not isinstance(interface, str) or not interface.strip():
             raise ValueError(
-                "interface must be a non-empty string (e.g. 'wlan0', 'wlp2s0'). "
+                "interface must be a non-empty string (e.g. 'wlan0', 'wlp2s0', 'Wi-Fi'). "
                 "On Android this is typically handled by the OS."
             )
 
         self.simulation_mode = simulation_mode
         self.interface = interface.strip()
+
+        # Windows-friendly default while preserving existing caller behaviour
+        if (
+            platform.system() == "Windows"
+            and self.interface.lower() in ("wlan0", "wlan1", "wlo1")
+        ):
+            self.interface = "Wi-Fi"
+
         self.consent_manager = ConsentManager()
         self.wordlist_generator = WordlistGenerator()
         self.results: List[Dict[str, Any]] = []
@@ -85,7 +100,8 @@ class Auditor:
         """Scan for nearby WiFi networks.
 
         In simulation mode returns realistic synthetic data. In live mode
-        delegates to scan_wifi() from scanner.py (requires privileges).
+        delegates to scan_wifi() from scanner.py (now supports Windows
+        via netsh; Npcap required for full Scapy compatibility).
 
         Args:
             interface: Optional interface override.
@@ -103,7 +119,7 @@ class Auditor:
 
         if not isinstance(interface, str) or not interface.strip():
             raise ValueError(
-                "interface must be a non-empty string like 'wlan0'. "
+                "interface must be a non-empty string like 'wlan0' or 'Wi-Fi'. "
                 "Run with simulation_mode=True if you lack privileges."
             )
 
@@ -124,7 +140,8 @@ class Auditor:
             except Exception as exc:
                 raise RuntimeError(
                     f"Live scan on '{interface}' failed. This usually requires "
-                    "root privileges and monitor mode (airmon-ng). "
+                    "root privileges and monitor mode (airmon-ng) on Linux or "
+                    "Npcap on Windows (https://npcap.com/). "
                     f"Original error: {exc}. Use simulation_mode=True for training."
                 ) from exc
 

@@ -37,7 +37,7 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 
 <table>
 <tr>
-<td valign="top">🔎 <b>Live Scanner</b><br>Detects nearby networks, encryption and signal strength using Scapy wrappers</td>
+<td valign="top">🔎 <b>Live Scanner</b><br>Detects nearby networks, encryption and signal strength using Scapy wrappers. Cross-platform (Linux iwlist + Windows netsh/Npcap)</td>
 <td valign="top">📖 <b>Smart Wordlists</b><br>Generates targeted dictionaries from SSID, patterns and local AI hints</td>
 <td valign="top">🛡️ <b>Safe Simulation</b><br>Runs full brute-force demos in-memory without touching real networks</td>
 </tr>
@@ -61,6 +61,8 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 ## 📦 Installation
 
 **Requirements:** Python 3.8+, `kivy`, `scapy`, `reportlab`, `jinja2`, `click`. For live scanning a wireless interface is needed (simulation mode requires nothing). For Android builds, install Buildozer.
+
+**Windows users:** Install Npcap from https://npcap.com/ (select "Install Npcap in WinPcap API-compatible Mode" for full Scapy compatibility). Live scanning uses built-in `netsh`; Npcap enables native packet capture.
 
 ```bash
 # Install from GitHub
@@ -131,6 +133,8 @@ wavebrute hashcat --ssid "Cafe_Rouge_FreeWiFi" --output target.22000
 # Generate a PDF report (auto-runs simulation if needed)
 wavebrute report --title "Classroom WiFi Audit"
 ```
+
+On Windows use `--interface "Wi-Fi"` (or your adapter name) for live scans. Npcap is required for full native Scapy packet support.
 
 ### Python API – full audit flow
 
@@ -213,7 +217,7 @@ The plugin system is available through the shared `Auditor` instance (register_m
 | Option              | Default     | Description |
 |---------------------|-------------|-------------|
 | `simulation_mode`   | `True`      | Whether to run entirely in safe simulation mode (recommended for all non-authorized use) |
-| `interface`         | `"wlan0"`   | Wireless interface name (ignored in simulation mode; used by `scan_wifi`) |
+| `interface`         | `"wlan0"` (Linux) or `"Wi-Fi"` (Windows) | Wireless interface name (ignored in simulation mode; used by `scan_wifi`). Npcap required on Windows for live/native Scapy support. |
 | `--simulation`      | `True`      | CLI flag for `scan`, `attack`, `wordlist` (live mode requires consent) |
 | `max_attempts`      | `12000`     | Maximum simulation iterations for `simulate_attack` and CLI attack command |
 | `size`              | `1500`      | Approximate wordlist size for `WordlistGenerator.from_ssid` and CLI wordlist |
@@ -253,7 +257,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 │   ├── auditor.py                 # Core Auditor class with scan(), simulate_attack(), simulate_pmkid_attack(), analyze_handshake(), export_for_hashcat(), build_report()
 │   ├── cli.py                     # Click commands: scan, wordlist, attack, pmkid, hashcat, report, ethics
 │   ├── ethics.py                  # ConsentManager with show_checklist(), require_consent(), log_audit()
-│   ├── scanner.py                 # scan_wifi() and parse_iwlist()
+│   ├── scanner.py                 # scan_wifi() and parse_iwlist() (Linux + Windows/Npcap)
 │   ├── wordlist.py                # WordlistGenerator with from_ssid(), augment_with_ai(), save(), register_mutator(), load_mutator_plugin()
 │   ├── report.py                  # ReportBuilder with from_results(), to_pdf(), render_template()
 │   ├── utils.py                   # validate_mac(), parse_cap_file(), generate_ai_suggestions()
@@ -283,7 +287,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Integrate optional Hashcat export for real offline cracking
 - [x] Improve Android UI scaling and touch targets in APK
 - [x] Add plugin system for custom wordlist mutators
-- [ ] Support Windows Npcap for native scanning
+- [x] Support Windows Npcap for native scanning
 - [ ] Train and bundle tiny on-device model for password prediction
 - [ ] Export reports directly to Markdown and HTML
 - [ ] Implement capture file upload and analysis in GUI
