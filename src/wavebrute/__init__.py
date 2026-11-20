@@ -14,15 +14,24 @@ cracking simulation, and direct interoperability with hashcat.
 The plugin system (register_mutator / load_mutator_plugin) lets users extend
 wordlist generation with arbitrary Python logic or external .py plugin files.
 
+The tiny on-device password prediction model (TinyPasswordModel) is trained
+on a synthetic corpus of common weak passwords and SSID associations and is
+bundled directly in the package (pure Python, no extra dependencies, works on
+Android). It powers generate_ai_suggestions() and the new predict_passwords()
+API.
+
 Public API:
     from wavebrute import (
-        Auditor, WordlistGenerator, ReportBuilder, ConsentManager, register_mutator
+        Auditor, WordlistGenerator, ReportBuilder, ConsentManager,
+        TinyPasswordModel, register_mutator
     )
 
     auditor = Auditor(simulation_mode=True)
     auditor.register_mutator(lambda w: [w + "2025"])
     auditor.simulate_pmkid_attack("MyNetwork")
     auditor.export_for_hashcat("MyNetwork")
+    model = TinyPasswordModel().train()
+    print(model.predict("CafeWiFi", 5))
 """
 
 __version__ = "0.1.0"
@@ -31,12 +40,14 @@ from .auditor import Auditor
 from .wordlist import WordlistGenerator, register_mutator
 from .report import ReportBuilder
 from .ethics import ConsentManager
+from .utils import TinyPasswordModel
 
 __all__ = [
     "Auditor",
     "WordlistGenerator",
     "ReportBuilder",
     "ConsentManager",
+    "TinyPasswordModel",
     "register_mutator",
     "__version__",
 ]

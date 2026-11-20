@@ -1,63 +1,73 @@
-"""Full audit flow example for WaveBrute.
+#!/usr/bin/env python3
+"""Full audit flow example demonstrating the complete WaveBrute pipeline.
 
-Demonstrates the complete ethical auditing pipeline including the new
-optional hashcat export for real offline cracking. All steps run in
-safe simulation mode.
+Includes the new tiny on-device model for password prediction.
+All operations run in safe simulation mode.
 """
 
-import os
-from wavebrute import Auditor
+from wavebrute import Auditor, TinyPasswordModel
 
 
 def main() -> None:
-    print("=== WaveBrute Full Ethical Audit Flow ===\n")
-    auditor = Auditor(simulation_mode=True, interface="wlan0")
+    print("=== WaveBrute Full Audit Flow Example ===")
+    print("All actions are simulated. No real networks are touched.\n")
 
-    # 1. Scan
-    print("1. Scanning for networks (simulation)...")
+    auditor = Auditor(simulation_mode=True)
+
+    # 1. Scan (uses AI hints powered by the model)
+    print("1. Scanning for networks...")
     networks = auditor.scan()
-    print(f"   Found {len(networks)} networks.\n")
+    print(f"   Found {len(networks)} networks (simulated).")
+    for net in networks[:2]:
+        print(f"   - {net['ssid']} ({net.get('encryption')})")
 
-    # 2. Simulate attack
-    print("2. Running brute-force simulation on Cafe_Rouge_FreeWiFi...")
-    attack = auditor.simulate_attack("Cafe_Rouge_FreeWiFi", max_attempts=6000)
+    # 2. Demonstrate the tiny on-device model directly
+    print("\n2. Training & using tiny on-device password model...")
+    model = TinyPasswordModel().train()
+    predictions = model.predict("Cafe_Rouge_FreeWiFi", 6)
+    print(f"   Top predictions: {predictions}")
+
+    # 3. Targeted wordlist (internally uses the model via generate_ai_suggestions)
+    print("\n3. Generating smart wordlist (with model predictions)...")
+    wordlist = auditor.wordlist_generator.from_ssid("Cafe_Rouge_FreeWiFi", size=800)
+    print(f"   Generated {len(wordlist)} candidates (first 5: {wordlist[:5]})")
+
+    # 4. Simulated attack
+    print("\n4. Running brute-force simulation...")
+    attack = auditor.simulate_attack("Cafe_Rouge_FreeWiFi", max_attempts=5000)
     print(f"   Success: {attack['success']}")
     if attack.get("password"):
-        print(f"   Password: {attack['password']}")
-    print(f"   Attempts: {attack['attempts']}\n")
+        print(f"   Cracked password: {attack['password']}")
 
-    # 3. PMKID simulation
-    print("3. Running PMKID simulation on IoT-Devices...")
+    # 5. PMKID simulation
+    print("\n5. Running PMKID simulation...")
     pmkid = auditor.simulate_pmkid_attack("IoT-Devices")
-    print(f"   Success: {pmkid['success']}")
-    print(f"   Notes: {pmkid.get('notes', '')[:80]}...\n")
+    print(f"   PMKID success: {pmkid['success']}")
 
-    # 4. Handshake analysis
-    print("4. Analyzing demo handshake capture...")
+    # 6. Direct model prediction via Auditor
+    print("\n6. Direct model predictions via Auditor...")
+    preds = auditor.predict_passwords("NETGEAR_Guest", num_predictions=5)
+    print(f"   Predictions: {preds}")
+
+    # 7. Handshake analysis (simulated)
+    print("\n7. Analyzing handshake capture (simulated)...")
     analysis = auditor.analyze_handshake("demo.cap")
-    print(f"   Crack time estimate: {analysis.get('crack_time_estimate', 'N/A')}")
-    print(f"   Has handshake: {analysis.get('has_handshake', False)}\n")
+    print(f"   Has handshake: {analysis['has_handshake']}")
+    print(f"   Crack estimate: {analysis['crack_time_estimate']}")
 
-    # 5. Hashcat export for real offline cracking
-    print("5. Exporting for hashcat offline cracking...")
-    hc_path = auditor.export_for_hashcat(
-        ssid="Cafe_Rouge_FreeWiFi",
-        output_path="demo_hashcat.22000"
-    )
-    print(f"   Hashcat file created: {hc_path}")
-    print("   (Open the file for hashcat command examples and real-capture guidance)\n")
+    # 8. Hashcat export
+    print("\n8. Exporting for hashcat...")
+    hc_path = auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
+    print(f"   Hashcat file: {hc_path}")
 
-    # 6. Build report
-    print("6. Building professional PDF report...")
-    report_path = auditor.build_report(
-        title="WaveBrute Full Audit with Hashcat Export",
-        output_path="full_audit_report.pdf"
-    )
-    print(f"   Report saved to: {report_path}\n")
+    # 9. Build PDF report
+    print("\n9. Building professional PDF report...")
+    report_path = auditor.build_report(title="Example Ethical Audit")
+    print(f"   Report saved to: {report_path}")
 
-    print("=== Audit flow completed successfully ===")
-    print("All operations were performed in safe simulation mode.")
-    print("Remember: only use against networks you own or have explicit permission for.")
+    print("\n=== Audit flow completed successfully ===")
+    print("The tiny on-device model was trained and used throughout.")
+    print("All operations respected the Ethics Guard (simulations auto-approved).")
 
 
 if __name__ == "__main__":

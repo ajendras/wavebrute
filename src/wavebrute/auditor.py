@@ -10,6 +10,7 @@ Implements the primary Auditor class with full support for:
 - Ethics enforcement through ConsentManager
 - Result collection for PDF reporting
 - Plugin system for custom wordlist mutators (register_mutator, load_mutator_plugin)
+- Tiny on-device password prediction model (bundled trained patterns)
 
 All methods include strict input validation and helpful error messages.
 Simulation mode is the secure default.
@@ -35,10 +36,12 @@ class Auditor:
 
     Provides scan(), simulate_attack(), simulate_pmkid_attack(),
     analyze_handshake(), export_for_hashcat(), build_report(),
-    register_mutator() and load_mutator_plugin() as the primary
-    public interface. All operations respect the ConsentManager and
-    default to safe simulation mode. The integrated WordlistGenerator
-    supports custom mutator plugins.
+    predict_passwords(), register_mutator() and load_mutator_plugin()
+    as the primary public interface. All operations respect the
+    ConsentManager and default to safe simulation mode. The integrated
+    WordlistGenerator supports custom mutator plugins. The new
+    TinyPasswordModel (bundled after training on weak-password patterns)
+    powers AI suggestions and direct password prediction.
 
     Live scanning now supports Windows via netsh (Npcap required for
     full native Scapy packet functionality).
@@ -165,7 +168,8 @@ class Auditor:
 
         No packets are transmitted. Demonstrates cracking logic, timing,
         and AI-augmented wordlist effectiveness. Uses the Auditor's
-        WordlistGenerator (including any registered custom mutators).
+        WordlistGenerator (including any registered custom mutators)
+        and the bundled TinyPasswordModel via generate_ai_suggestions().
 
         Args:
             ssid: Target network SSID.
@@ -212,7 +216,8 @@ class Auditor:
         PMKID attacks allow cracking without capturing a full 4-way handshake
         by extracting the PMKID from the AP's response to a special association.
         This is common on many consumer routers. No real packets are sent.
-        Uses the Auditor's WordlistGenerator (including any registered custom mutators).
+        Uses the Auditor's WordlistGenerator (including any registered custom mutators)
+        and the bundled TinyPasswordModel via generate_ai_suggestions().
 
         Args:
             ssid: Target network SSID.
@@ -239,6 +244,35 @@ class Auditor:
         self.results.append(result)
         self.consent_manager.log_audit("simulate_pmkid_attack", result)
         return result
+
+    def predict_passwords(self, ssid: str, num_predictions: int = 10) -> List[str]:
+        """Predict likely passwords using the bundled tiny on-device model.
+
+        The model is trained offline on a corpus of common weak passwords
+        and SSID-keyword associations, then bundled as pure-Python pattern
+        tables and weights. No external libraries or network calls are used,
+        making it suitable for Android and classroom environments.
+
+        This powers the AI Predictor feature and is also used internally by
+        generate_ai_suggestions() and wordlist generation.
+
+        Args:
+            ssid: Network name / context to base predictions on.
+            num_predictions: Number of suggestions to return.
+
+        Returns:
+            List of predicted password strings, ranked by learned heuristics.
+
+        Raises:
+            ValueError: If ssid is empty.
+        """
+        if not isinstance(ssid, str) or not ssid.strip():
+            raise ValueError("ssid must be a non-empty string")
+        ssid = ssid.strip()
+
+        from .utils import get_or_train_model
+        model = get_or_train_model()
+        return model.predict(ssid, num_predictions)
 
     def analyze_handshake(self, capfile: str) -> Dict[str, Any]:
         """Analyze a packet capture for WPA handshake presence.
@@ -419,7 +453,7 @@ class Auditor:
         """Internal simulation engine.
 
         Uses the shared self.wordlist_generator (with any registered custom
-        mutators) and augments it with AI suggestions.
+        mutators) and augments it with AI suggestions from the bundled model.
         """
         start_time = time.time()
 
@@ -431,7 +465,7 @@ class Auditor:
         else:
             wordlist = generator.from_ssid(ssid, size=1200)
 
-        # Augment with AI-derived patterns
+        # Augment with AI-derived patterns from the tiny model
         ai_suggestions = generate_ai_suggestions(ssid)
         wordlist = ai_suggestions + wordlist
 
@@ -482,8 +516,9 @@ class Auditor:
         """Internal engine for PMKID simulation.
 
         Uses the shared self.wordlist_generator (with any registered custom
-        mutators) + AI hints. The cracking condition is tuned to demonstrate
-        typical weak passwords found in PMKID captures.
+        mutators) + AI hints from the bundled tiny model. The cracking
+        condition is tuned to demonstrate typical weak passwords found in
+        PMKID captures.
         """
         start_time = time.time()
 
@@ -628,7 +663,7 @@ class Auditor:
             raise ValueError(
                 "No audit results available. Run scan(), simulate_attack(), "
                 "simulate_pmkid_attack(), analyze_handshake(), "
-                "or export_for_hashcat() first."
+                "predict_passwords(), or export_for_hashcat() first."
             )
 
         if output_path is None:
@@ -661,6 +696,8 @@ if __name__ == "__main__":
         print(f"  Password found: {attack['password']}")
     pmkid = auditor.simulate_pmkid_attack("IoT-Devices")
     print(f"PMKID simulation success: {pmkid['success']}")
+    preds = auditor.predict_passwords("Cafe_Rouge_FreeWiFi", 6)
+    print(f"Model predictions: {preds}")
     hc_path = auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
     print(f"Hashcat export written to: {hc_path}")
     report_path = auditor.build_report()
