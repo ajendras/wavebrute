@@ -8,7 +8,7 @@ Implements the primary Auditor class with full support for:
 - Handshake capture file analysis (via Scapy)
 - Optional hashcat .22000 export for real offline cracking
 - Ethics enforcement through ConsentManager
-- Result collection for PDF reporting
+- Result collection for PDF/Markdown/HTML reporting
 - Plugin system for custom wordlist mutators (register_mutator, load_mutator_plugin)
 - Tiny on-device password prediction model (bundled trained patterns)
 
@@ -643,22 +643,30 @@ class Auditor:
         return header + body
 
     def build_report(
-        self, title: str = "WaveBrute Ethical Audit Report", output_path: Optional[str] = None
+        self,
+        title: str = "WaveBrute Ethical Audit Report",
+        output_path: Optional[str] = None,
+        format: str = "pdf",
     ) -> str:
-        """Generate a professional PDF report from all collected results.
+        """Generate a professional report from all collected results.
 
-        Uses ReportBuilder (Jinja2 templating + ReportLab).
+        Supports PDF (default, via ReportLab), Markdown and HTML.
+        HTML includes inline neo-brutalist CSS matching the GUI.
+        Markdown is clean and GitHub-friendly.
 
         Args:
             title: Report title.
-            output_path: Where to save the PDF (auto-generated if None).
+            output_path: Where to save the report (auto-generated if None).
+            format: One of "pdf", "md", or "html".
 
         Returns:
-            Absolute path to the created PDF file.
+            Absolute path to the created report file.
 
         Raises:
-            ValueError: If no results have been collected yet.
+            ValueError: If no results have been collected yet or format is invalid.
         """
+        if format not in ("pdf", "md", "markdown", "html"):
+            raise ValueError("format must be one of: pdf, md, html")
         if not self.results:
             raise ValueError(
                 "No audit results available. Run scan(), simulate_attack(), "
@@ -666,12 +674,24 @@ class Auditor:
                 "predict_passwords(), or export_for_hashcat() first."
             )
 
+        fmt = "md" if format == "markdown" else format
+
         if output_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = f"wavebrute_report_{timestamp}.pdf"
+            ext = ".pdf" if fmt == "pdf" else ".md" if fmt == "md" else ".html"
+            output_path = f"wavebrute_report_{timestamp}{ext}"
+        if not isinstance(output_path, str) or not output_path.strip():
+            raise ValueError("output_path must be a non-empty string")
 
         builder = ReportBuilder.from_results(self.results)
-        builder.to_pdf(title, output_path)
+        if fmt == "pdf":
+            builder.to_pdf(title, output_path)
+        elif fmt == "md":
+            builder.to_markdown(title, output_path)
+        elif fmt == "html":
+            builder.to_html(title, output_path)
+
+        self.consent_manager.log_audit("build_report", {"title": title, "format": fmt, "path": output_path})
         return os.path.abspath(output_path)
 
     def get_results(self) -> List[Dict[str, Any]]:
@@ -702,6 +722,10 @@ if __name__ == "__main__":
     print(f"Hashcat export written to: {hc_path}")
     report_path = auditor.build_report()
     print(f"PDF report written to: {report_path}")
+    md_path = auditor.build_report("Markdown Audit", format="md")
+    print(f"Markdown report written to: {md_path}")
+    html_path = auditor.build_report("HTML Audit", format="html")
+    print(f"HTML report written to: {html_path}")
 
     print("\n=== Plugin system demo ===")
     def demo_mutator(word: str):

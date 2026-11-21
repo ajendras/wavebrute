@@ -13,7 +13,7 @@ Examples:
     wavebrute attack --ssid "Cafe_Rouge_FreeWiFi"
     wavebrute pmkid --ssid "Vulnerable-Router"
     wavebrute hashcat --ssid "TargetNet"
-    wavebrute report --title "My Audit"
+    wavebrute report --title "My Audit" --format html
 """
 
 import click
@@ -261,20 +261,29 @@ def hashcat(ssid: Optional[str], output: Optional[str]) -> None:
 @click.option(
     "--title",
     default="WaveBrute Ethical Audit Report",
-    help="Title for the generated PDF",
+    help="Title for the generated report",
 )
 @click.option(
     "--output",
     "-o",
     default=None,
     type=click.Path(dir_okay=False, writable=True, resolve_path=True),
-    help="Output PDF path (auto-generated if omitted)",
+    help="Output path (auto-generated if omitted)",
 )
-def report(title: str, output: Optional[str]) -> None:
-    """Generate a professional PDF report from collected audit results.
+@click.option(
+    "--format",
+    "-f",
+    default="pdf",
+    type=click.Choice(["pdf", "md", "html"]),
+    help="Report format (pdf, md, html)",
+)
+def report(title: str, output: Optional[str], format: str) -> None:
+    """Generate a professional report from collected audit results.
 
-    If no prior results exist a small simulation pipeline is run automatically
-    so the command is always runnable.
+    Supports PDF, Markdown and HTML. If no prior results exist a small
+    simulation pipeline is run automatically so the command is always
+    runnable. Markdown and HTML are perfect for sharing or embedding
+    in documentation.
     """
     auditor = Auditor(simulation_mode=True)
     # Ensure we have data for the report
@@ -287,14 +296,22 @@ def report(title: str, output: Optional[str]) -> None:
         auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
 
     click.echo(click.style("\n=== REPORT BUILDER ===", fg="magenta", bold=True))
-    click.echo(f"Title : {title}")
+    click.echo(f"Title  : {title}")
+    click.echo(f"Format : {format.upper()}")
 
     try:
-        pdf_path = auditor.build_report(title=title, output_path=output)
-        click.echo(click.style("\nPDF REPORT GENERATED SUCCESSFULLY", fg="green", bold=True))
-        click.echo(f"Location : {pdf_path}")
-        click.echo("\nThe PDF uses neo-brutalist styling (thick borders, #ff004d/#00ff9f accents).")
-        click.echo("Open it with any PDF viewer. All actions were simulated.")
+        report_path = auditor.build_report(
+            title=title, output_path=output, format=format
+        )
+        click.echo(click.style(f"\n{format.upper()} REPORT GENERATED SUCCESSFULLY", fg="green", bold=True))
+        click.echo(f"Location : {report_path}")
+        if format == "html":
+            click.echo("\nThe HTML uses inline neo-brutalist CSS (thick borders, screaming colors).")
+        elif format == "md":
+            click.echo("\nMarkdown is clean, GitHub-friendly and great for docs.")
+        else:
+            click.echo("\nThe PDF uses neo-brutalist styling (thick borders, #ff004d/#00ff9f accents).")
+        click.echo("Open it with any viewer. All actions were simulated.")
     except ValueError as exc:
         click.echo(click.style(f"Report error: {exc}", fg="red"))
     except Exception as exc:  # pylint: disable=broad-except

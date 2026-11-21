@@ -2,9 +2,9 @@
 
 A loud, neo-brutalist GUI application for responsible wireless security testing.
 Supports live scanning (with mandatory consent), safe in-memory simulations,
-targeted wordlist generation, handshake analysis, PDF reporting, optional
-hashcat .22000 export for real offline cracking, and Android deployment via
-Buildozer.
+targeted wordlist generation, handshake analysis, multi-format reporting
+(PDF/Markdown/HTML), optional hashcat .22000 export for real offline cracking,
+and Android deployment via Buildozer.
 
 All live operations are guarded by an Ethics Guard. Simulation mode is
 enabled by default for classrooms and training. The new simulate_pmkid_attack()
@@ -32,6 +32,7 @@ Public API:
     auditor.export_for_hashcat("MyNetwork")
     model = TinyPasswordModel().train()
     print(model.predict("CafeWiFi", 5))
+    auditor.build_report(format="html")  # new: Markdown + HTML supported
 """
 
 __version__ = "0.1.0"

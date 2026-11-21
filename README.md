@@ -307,7 +307,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Add plugin system for custom wordlist mutators
 - [x] Support Windows Npcap for native scanning
 - [x] Train and bundle tiny on-device model for password prediction
-- [ ] Export reports directly to Markdown and HTML
+- [x] Export reports directly to Markdown and HTML
 - [ ] Implement capture file upload and analysis in GUI
 - [ ] Add batch mode for auditing multiple networks
 - [ ] Create prebuilt signed APK releases in CI
