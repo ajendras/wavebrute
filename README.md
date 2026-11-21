@@ -222,7 +222,7 @@ print("Generated:", path)
 
 <details><summary>GUI usage</summary>
 
-Launch with `python -m wavebrute.gui.app`. The app provides three screens (`ScanScreen`, `AttackScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 3px borders and 6dp hard shadows. The Attack screen includes a dedicated PMKID simulation button. **Android UI now uses `kivy.metrics.dp` for all sizes with minimum 64dp touch targets for proper scaling and finger-friendly interaction across device densities.**
+Launch with `python -m wavebrute.gui.app`. The app provides four screens (`ScanScreen`, `AttackScreen`, `CaptureScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 3px borders and 6dp hard shadows. The **CaptureScreen** implements capture file upload via a FileChooser popup (filtered to .cap/.pcap/.pcapng) and displays full handshake analysis results (leveraging `analyze_handshake()` and automatic simulation fallback when the file is absent). The Attack screen includes a dedicated PMKID simulation button. **Android UI now uses `kivy.metrics.dp` for all sizes with minimum 64dp touch targets for proper scaling and finger-friendly interaction across device densities.**
 
 The plugin system is available through the shared `Auditor` instance (register_mutator / load_mutator_plugin) before starting an attack or wordlist generation. The AI Predictor (powered by the bundled tiny model) is used automatically by wordlist generation and can be called via `auditor.predict_passwords(...)`.
 
@@ -281,7 +281,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 │   ├── utils.py                   # TinyPasswordModel (trained & bundled), validate_mac(), parse_cap_file(), generate_ai_suggestions()
 │   ├── gui/
 │   │   ├── app.py                 # WaveBruteApp with neo-brutalist styling and ScreenManager
-│   │   └── screens.py             # ScanScreen, AttackScreen, ReportScreen + BrutalistButton/Label
+│   │   └── screens.py             # ScanScreen, AttackScreen, CaptureScreen, ReportScreen + BrutalistButton/Label
 │   └── tests/
 │       └── test_auditor.py        # Pytest cases for simulation, ethics, reporting
 ├── examples/
@@ -308,7 +308,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Support Windows Npcap for native scanning
 - [x] Train and bundle tiny on-device model for password prediction
 - [x] Export reports directly to Markdown and HTML
-- [ ] Implement capture file upload and analysis in GUI
+- [x] Implement capture file upload and analysis in GUI
 - [ ] Add batch mode for auditing multiple networks
 - [ ] Create prebuilt signed APK releases in CI
 - [ ] Add dark theme variant while keeping brutalist contrast

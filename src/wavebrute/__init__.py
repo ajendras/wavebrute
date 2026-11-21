@@ -20,6 +20,11 @@ bundled directly in the package (pure Python, no extra dependencies, works on
 Android). It powers generate_ai_suggestions() and the new predict_passwords()
 API.
 
+The GUI now includes a dedicated CaptureScreen that supports capture file
+upload (via Kivy FileChooser) and displays handshake analysis results. The
+screen gracefully falls back to realistic simulation when the selected file
+does not exist.
+
 Public API:
     from wavebrute import (
         Auditor, WordlistGenerator, ReportBuilder, ConsentManager,
