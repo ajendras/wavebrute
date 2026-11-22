@@ -9,48 +9,91 @@ package.name = wavebrute
 # (str) Package domain (needed for android)
 package.domain = org.wavebrute
 
-# (str) Source code where the main.py live
+# (str) Source code directory (where your main.py or main.pyx lives)
 source.dir = .
 
-# (list) Source files to include (let empty to include all the files)
-source.include_exts = py,png,jpg,kv,atlas,ttf
+# (list) Source files to include (regex works too)
+source.include_exts = py,png,jpg,kv,atlas,svg,ttf,otf
 
-# (list) Source files to exclude (let empty to not exclude anything)
-source.exclude_patterns = tests/*,docs/*,assets/*.svg,*.md,CHANGELOG.md,CONTRIBUTING.md,SECURITY.md
+# (list) Source files to exclude
+source.exclude_patterns = tests/**,docs/**,.github/**,CHANGELOG.md,CONTRIBUTING.md,README.md,SECURITY.md
 
-# (str) Application versioning (method 1)
+# (str) Application version
 version = 0.1.0
 
+# (str) Application main file (the one that starts the Kivy app)
+main = main.py
+
 # (list) Application requirements
-requirements = python3,kivy==2.1.0,scapy>=2.5.0,reportlab>=4.0.0,jinja2>=3.1.0,click>=8.1.0
+requirements = python3,kivy==2.1.0,scapy,reportlab,jinja2,click,setuptools
 
-# (str) Supported orientation (one of landscape, portrait or all)
-orientation = portrait
+# (str) Orientation of the application
+orientation = portrait,landscape
 
-# (bool) Indicate if the application should be fullscreen or not
+# (bool) Indicate if the application will be fullscreen
 fullscreen = 0
 
 # (list) Permissions
-android.permissions = ACCESS_FINE_LOCATION,ACCESS_WIFI_STATE,ACCESS_NETWORK_STATE,INTERNET
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,CHANGE_NETWORK_STATE,ACCESS_WIFI_STATE,CHANGE_WIFI_STATE,ACCESS_FINE_LOCATION,ACCESS_COARSE_LOCATION,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 
-# (int) Android API to use
+# (int) Target Android API level
 android.api = 33
 
-# (int) Minimum API required
-android.minapi = 21
+# (int) Minimum Android API level
+android.minapi = 24
 
-# (str) Android arch to build for
-android.arch = arm64-v8a,armeabi-v7a
+# (bool) Whether to build in release mode
+# android.release = False
+
+# (str) Path to a custom keystore
+# android.keystore = wavebrute.keystore
+
+# (str) Keystore password
+# android.keystore_password = wavebrute123
+
+# (str) Alias of the key in the keystore
+# android.keyalias = wavebrute
+
+# (str) Key password
+# android.keyalias_password = wavebrute123
 
 # (str) Android entry point
-android.entrypoint = src/wavebrute/gui/app.py
+android.entrypoint = org.kivy.android.PythonActivity
 
-# (str) Presplash background color (hex value in #rrggbb or #rrggbbaa format)
-presplash.color = #FFEA00
+# (list) Android additional jars
+android.add_jars =
 
-# Improved Android UI scaling:
-# The GUI now uses kivy.metrics.dp for all sizes/padding/borders.
-# Buttons have a minimum 64dp height guaranteeing comfortable
-# touch targets on any device density. Build with:
-#   buildozer -c android debug
-# The resulting APK will scale cleanly from small phones to large tablets.
+# (list) Android additional aars
+android.add_aars =
+
+# (str) Android NDK version
+android.ndk = 25b
+
+# (str) Android SDK version
+android.sdk = 33
+
+# (bool) If True, enables the SDL2 bootstrap (recommended for Kivy)
+android.bootstrap = sdl2
+
+# (str) Python version used by the app
+python.version = 3.10
+
+# (str) List of python modules to include
+python.modules = kivy,wavebrute
+
+# (bool) Enable AndroidX support
+android.use_androidx = True
+
+[buildozer]
+
+# (str) Log level of buildozer
+log_level = 2
+
+# (str) Path to build directory
+bin_dir = bin
+
+# (str) Path to temporary build directory
+build_dir = .buildozer
+
+# (bool) Automatically update buildozer and dependencies
+update = False

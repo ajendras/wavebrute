@@ -62,6 +62,8 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 
 **Requirements:** Python 3.8+, `kivy`, `scapy`, `reportlab`, `jinja2`, `click`. For live scanning a wireless interface is needed (simulation mode requires nothing). For Android builds, install Buildozer.
 
+**Android users:** Download the latest **signed APK** from the [GitHub Releases](https://github.com/ajendras/wavebrute/releases) page (prebuilt by CI). Requires Android 8.0+. The APK defaults to safe simulation mode; live operations require completing the ethics checklist.
+
 **Windows users:** Install Npcap from https://npcap.com/ (select "Install Npcap in WinPcap API-compatible Mode" for full Scapy compatibility). Live scanning uses built-in `netsh`; Npcap enables native packet capture.
 
 ```bash
@@ -74,7 +76,7 @@ wavebrute --help
 # Launch the neo-brutalist GUI
 python -m wavebrute.gui.app
 
-# Build Android APK
+# Build Android APK locally (or use prebuilt from Releases)
 buildozer -c android debug
 ```
 
@@ -247,6 +249,8 @@ Launch with `python -m wavebrute.gui.app`. The app provides four screens (`ScanS
 
 The plugin system is available through the shared `Auditor` instance (register_mutator / load_mutator_plugin) before starting an attack or wordlist generation. The AI Predictor (powered by the bundled tiny model) is used automatically by wordlist generation and can be called via `auditor.predict_passwords(...)`.
 
+Prebuilt signed APKs are produced by CI and attached to every GitHub Release.
+
 </details>
 
 ## 🔧 Configuration
@@ -309,6 +313,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 │       └── test_auditor.py        # Pytest cases for simulation, ethics, reporting
 ├── examples/
 │   └── audit_flow.py              # Runnable full pipeline: scan → wordlist → simulated attack → pmkid → hashcat export → report
+├── main.py                        # Android APK entrypoint (imports WaveBruteApp)
 └── tests/test_auditor.py          # Comprehensive test suite (simulation only)
 ```
 
@@ -333,7 +338,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Export reports directly to Markdown and HTML
 - [x] Implement capture file upload and analysis in GUI
 - [x] Add batch mode for auditing multiple networks
-- [ ] Create prebuilt signed APK releases in CI
+- [x] Create prebuilt signed APK releases in CI
 - [ ] Add dark theme variant while keeping brutalist contrast
 - [ ] Support WPS PIN brute-force simulation
 
