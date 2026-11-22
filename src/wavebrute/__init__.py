@@ -25,6 +25,10 @@ upload (via Kivy FileChooser) and displays handshake analysis results. The
 screen gracefully falls back to realistic simulation when the selected file
 does not exist.
 
+The new batch_audit() method allows auditing many networks in a single call
+(running attack + optional PMKID + predictions simulations) and aggregates
+results for easy one-command reporting.
+
 Public API:
     from wavebrute import (
         Auditor, WordlistGenerator, ReportBuilder, ConsentManager,
@@ -38,6 +42,7 @@ Public API:
     model = TinyPasswordModel().train()
     print(model.predict("CafeWiFi", 5))
     auditor.build_report(format="html")  # new: Markdown + HTML supported
+    batch = auditor.batch_audit(["Net1", "Net2"], max_attempts=4000)
 """
 
 __version__ = "0.1.0"

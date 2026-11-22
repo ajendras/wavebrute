@@ -54,7 +54,7 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 <tr>
 <td valign="top">🔨 <b>Hashcat Export</b><br>Optional .22000 file generation for real offline cracking with hashcat (simulation data + real-capture instructions)</td>
 <td valign="top">🔌 <b>Plugin System</b><br>Register custom Python mutators or load .py plugins to extend wordlist generation with domain-specific rules, leetspeak, corporate patterns etc.</td>
-<td valign="top"></td>
+<td valign="top">🔢 <b>Batch Auditing</b><br>Audit multiple networks in one command (attack + PMKID + predictions). Results are aggregated for one-click reporting.</td>
 </tr>
 </table>
 
@@ -108,6 +108,14 @@ analysis = auditor.analyze_handshake("demo.cap")
 export_path = auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
 report_path = auditor.build_report(title="My First Audit")
 
+# New: batch mode for multiple networks
+batch_results = auditor.batch_audit(
+    ["Cafe_Rouge_FreeWiFi", "IoT-Devices", "Linksys-5G"],
+    max_attempts=3000,
+    include_pmkid=True
+)
+print(f"Batch audited {len(batch_results)} simulation results")
+
 print(f"Found {len(networks)} networks")
 print(f"Simulation cracked: {attack['success']} ({attack.get('password')})")
 print(f"PMKID sim cracked: {pmkid['success']} ({pmkid.get('password')})")
@@ -138,6 +146,9 @@ wavebrute hashcat --ssid "Cafe_Rouge_FreeWiFi" --output target.22000
 
 # Generate a PDF report (auto-runs simulation if needed)
 wavebrute report --title "Classroom WiFi Audit"
+
+# New: batch audit multiple networks (all simulations)
+wavebrute batch "Cafe_Rouge_FreeWiFi" "IoT-Devices" "Linksys-5G" --max-attempts 4000
 ```
 
 On Windows use `--interface "Wi-Fi"` (or your adapter name) for live scans. Npcap is required for full native Scapy packet support.
@@ -174,6 +185,16 @@ pmkid_result = auditor.simulate_pmkid_attack("IoT-Devices")
 preds = auditor.predict_passwords("IoT-Devices", num_predictions=8)
 export_path = auditor.export_for_hashcat("IoT-Devices")
 report = auditor.build_report("IoT Devices Audit")
+
+# New batch mode (runs attack/PMKID/predictions across many networks)
+batch_results = auditor.batch_audit(
+    ssids=["TestNet1", "TestNet2"],
+    max_attempts=5000,
+    include_pmkid=True,
+    include_predictions=True
+)
+print(f"Batch completed with {len(batch_results)} results")
+
 print("Report:", report)
 print("Hashcat export:", export_path)
 print("Model predictions:", preds)
@@ -240,6 +261,7 @@ The plugin system is available through the shared `Auditor` instance (register_m
 | `hash_mode`         | `22000`     | Hashcat hash type used by `export_for_hashcat()` (modern combined PMKID/handshake format) |
 | `mutators`          | `[]`        | List of registered mutator callables (via `register_mutator()` or loaded plugins). Built-ins include number suffixes, leetspeak and case variations. |
 | `ai_model`          | `TinyPasswordModel` | Bundled tiny pure-Python on-device model for password prediction. Trained offline on a synthetic corpus of weak passwords and SSID associations; zero extra runtime dependencies. Used by `generate_ai_suggestions`, `predict_passwords()` and wordlist augmentation. |
+| `batch`             | N/A         | New `batch_audit(ssids, max_attempts=8000, include_pmkid=True, include_predictions=True)` and corresponding CLI `batch` subcommand. Aggregates results from multiple networks for unified reporting. |
 
 ## 🧩 Architecture
 
@@ -254,6 +276,7 @@ graph TD
     Auditor --> Model[TinyPasswordModel<br/>utils.py - bundled trained patterns]
     Auditor --> PMKID[simulate_pmkid_attack<br/>_run_pmkid_simulation]
     Auditor --> Hashcat[export_for_hashcat<br/>_generate_hashcat_content]
+    Auditor --> Batch[batch_audit<br/>multiple networks]
     Auditor --> Utils[utils.py<br/>validate_mac, parse_cap_file, generate_ai_suggestions]
     Auditor --> Report[ReportBuilder<br/>to_pdf via Jinja2 + ReportLab]
     Auditor --> Android[buildozer.spec<br/>Android APK]
@@ -262,7 +285,7 @@ graph TD
     style Consent fill:#00ff9f,color:#000
 ```
 
-The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`. The new plugin system is exposed via `Auditor.register_mutator()` / `Auditor.load_mutator_plugin()` (and directly on `WordlistGenerator`). The tiny on-device model (`TinyPasswordModel`) is bundled with pre-computed patterns derived from training on common weak passwords; it powers `generate_ai_suggestions()` and the new `predict_passwords()` API.
+The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`. The new plugin system is exposed via `Auditor.register_mutator()` / `Auditor.load_mutator_plugin()` (and directly on `WordlistGenerator`). The tiny on-device model (`TinyPasswordModel`) is bundled with pre-computed patterns derived from training on common weak passwords; it powers `generate_ai_suggestions()` and the new `predict_passwords()` API. The new `batch_audit()` method runs full simulation pipelines across many SSIDs in one call and aggregates results for easy reporting.
 
 ## 📁 Project structure
 
@@ -295,7 +318,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 pytest
 ```
 
-The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simulate_attack` (including deterministic success path), the new `simulate_pmkid_attack`, wordlist augmentation, ethics consent checks (with mocked checklist), `analyze_handshake`, `export_for_hashcat`, `build_report`, error paths, full integration flows, **the new plugin system** (custom mutators + dynamic plugin loading from .py files), **and the bundled `TinyPasswordModel` + `predict_passwords()`** — all in safe simulation mode with no real network activity.
+The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simulate_attack` (including deterministic success path), the new `simulate_pmkid_attack`, wordlist augmentation, ethics consent checks (with mocked checklist), `analyze_handshake`, `export_for_hashcat`, `build_report`, error paths, full integration flows, **the new plugin system** (custom mutators + dynamic plugin loading from .py files), **and the bundled `TinyPasswordModel` + `predict_passwords()`** — all in safe simulation mode with no real network activity. New tests were added for `batch_audit()` (including consent mocking, error paths, result aggregation and parameter combinations).
 
 ## 📍 Roadmap
 
@@ -309,7 +332,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Train and bundle tiny on-device model for password prediction
 - [x] Export reports directly to Markdown and HTML
 - [x] Implement capture file upload and analysis in GUI
-- [ ] Add batch mode for auditing multiple networks
+- [x] Add batch mode for auditing multiple networks
 - [ ] Create prebuilt signed APK releases in CI
 - [ ] Add dark theme variant while keeping brutalist contrast
 - [ ] Support WPS PIN brute-force simulation

@@ -396,6 +396,85 @@ class Auditor:
         self.consent_manager.log_audit("export_for_hashcat", result)
         return os.path.abspath(output_path)
 
+    def batch_audit(
+        self,
+        ssids: List[str],
+        max_attempts: int = 8000,
+        include_pmkid: bool = True,
+        include_predictions: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Audit multiple networks in a single batch using safe simulations.
+
+        Runs simulate_attack() for each SSID (and optionally
+        simulate_pmkid_attack() and predict_passwords()). All results
+        are collected, logged and stored in self.results. This is the
+        primary entrypoint for the new batch mode.
+
+        No real packets are ever sent. Perfect for classroom demos and
+        comparing multiple networks quickly. Uses registered mutators
+        and the bundled TinyPasswordModel.
+
+        Args:
+            ssids: List of target SSIDs (must be non-empty).
+            max_attempts: Maximum simulation attempts per network.
+            include_pmkid: Whether to also run PMKID simulation for each SSID.
+            include_predictions: Whether to run AI password predictions for each.
+
+        Returns:
+            List of all result dictionaries produced by the batch run.
+
+        Raises:
+            ValueError: If ssids is not a list of valid non-empty strings.
+            PermissionError: If consent is not granted for the batch action.
+        """
+        if not isinstance(ssids, list) or not ssids:
+            raise ValueError("ssids must be a non-empty list of strings")
+        if not all(isinstance(s, str) and s.strip() for s in ssids):
+            raise ValueError("all items in ssids must be non-empty strings")
+
+        consent_action = f"batch audit on {len(ssids)} network(s)"
+        if not self.consent_manager.require_consent(consent_action):
+            raise PermissionError(
+                "Ethics Guard denied batch audit. "
+                "Complete the consent checklist first."
+            )
+
+        batch_results: List[Dict[str, Any]] = []
+
+        for ssid in ssids:
+            attack = self.simulate_attack(ssid, max_attempts=max_attempts)
+            batch_results.append(attack)
+
+            if include_pmkid:
+                pmkid = self.simulate_pmkid_attack(
+                    ssid, max_attempts=max_attempts // 2
+                )
+                batch_results.append(pmkid)
+
+            if include_predictions:
+                preds = self.predict_passwords(ssid, num_predictions=6)
+                pred_result: Dict[str, Any] = {
+                    "type": "password_predictions",
+                    "ssid": ssid,
+                    "predictions": preds,
+                    "simulation": True,
+                    "timestamp": datetime.now().isoformat(),
+                }
+                self.results.append(pred_result)
+                batch_results.append(pred_result)
+
+        self.consent_manager.log_audit(
+            "batch_audit",
+            {
+                "ssids": ssids,
+                "networks_audited": len(ssids),
+                "include_pmkid": include_pmkid,
+                "include_predictions": include_predictions,
+                "total_results": len(batch_results),
+            },
+        )
+        return batch_results
+
     def _simulate_scan(self) -> List[Dict[str, Any]]:
         """Return hard-coded but realistic networks for simulation mode.
 
@@ -733,4 +812,10 @@ if __name__ == "__main__":
     auditor.register_mutator(demo_mutator)
     attack2 = auditor.simulate_attack("TestNet")
     print("Custom mutator registered and used.")
+
+    print("\n=== Batch mode demo ===")
+    batch = auditor.batch_audit(
+        ["BatchNet1", "BatchNet2"], max_attempts=500, include_pmkid=False
+    )
+    print(f"Batch produced {len(batch)} results.")
     print("Demo completed successfully. All operations were simulated.")
