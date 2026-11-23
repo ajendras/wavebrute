@@ -16,11 +16,14 @@ All methods include strict input validation and helpful error messages.
 Simulation mode is the secure default.
 """
 
+from __future__ import annotations
+
 import os
-import time
 import platform
+import time
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from scapy.all import rdpcap  # graceful fallback if unavailable
 
@@ -80,10 +83,10 @@ class Auditor:
 
         self.consent_manager = ConsentManager()
         self.wordlist_generator = WordlistGenerator()
-        self.results: List[Dict[str, Any]] = []
-        self.audit_log: List[Dict[str, Any]] = []
+        self.results: list[dict[str, Any]] = []
+        self.audit_log: list[dict[str, Any]] = []
 
-    def register_mutator(self, mutator: Callable[[str], List[str]]) -> None:
+    def register_mutator(self, mutator: Callable[[str], list[str]]) -> None:
         """Register a custom wordlist mutator.
 
         See WordlistGenerator.register_mutator() for full documentation.
@@ -99,7 +102,7 @@ class Auditor:
         """
         self.wordlist_generator.load_mutator_plugin(plugin_path)
 
-    def scan(self, interface: Optional[str] = None) -> List[Dict[str, Any]]:
+    def scan(self, interface: str | None = None) -> list[dict[str, Any]]:
         """Scan for nearby WiFi networks.
 
         In simulation mode returns realistic synthetic data. In live mode
@@ -161,9 +164,9 @@ class Auditor:
     def simulate_attack(
         self,
         ssid: str,
-        wordlist_path: Optional[str] = None,
+        wordlist_path: str | None = None,
         max_attempts: int = 10000,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Perform a completely safe, in-memory brute-force simulation.
 
         No packets are transmitted. Demonstrates cracking logic, timing,
@@ -210,7 +213,7 @@ class Auditor:
         self,
         ssid: str,
         max_attempts: int = 8000,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Perform a safe in-memory simulation of a PMKID attack.
 
         PMKID attacks allow cracking without capturing a full 4-way handshake
@@ -245,7 +248,7 @@ class Auditor:
         self.consent_manager.log_audit("simulate_pmkid_attack", result)
         return result
 
-    def predict_passwords(self, ssid: str, num_predictions: int = 10) -> List[str]:
+    def predict_passwords(self, ssid: str, num_predictions: int = 10) -> list[str]:
         """Predict likely passwords using the bundled tiny on-device model.
 
         The model is trained offline on a corpus of common weak passwords
@@ -274,7 +277,7 @@ class Auditor:
         model = get_or_train_model()
         return model.predict(ssid, num_predictions)
 
-    def analyze_handshake(self, capfile: str) -> Dict[str, Any]:
+    def analyze_handshake(self, capfile: str) -> dict[str, Any]:
         """Analyze a packet capture for WPA handshake presence.
 
         Uses parse_cap_file (from utils) and Scapy when possible.
@@ -311,7 +314,7 @@ class Auditor:
             try:
                 parsed = parse_cap_file(capfile)
                 if parsed and parsed.get("has_handshake", False):
-                    analysis: Dict[str, Any] = parsed
+                    analysis: dict[str, Any] = parsed
                 else:
                     analysis = self._simulate_handshake_analysis(capfile)
             except Exception:  # Scapy errors, permission issues, malformed file
@@ -325,8 +328,8 @@ class Auditor:
 
     def export_for_hashcat(
         self,
-        ssid: Optional[str] = None,
-        output_path: Optional[str] = None,
+        ssid: str | None = None,
+        output_path: str | None = None,
         hash_mode: str = "22000",
     ) -> str:
         """Generate a hashcat-compatible hash file for real offline cracking.
@@ -398,11 +401,11 @@ class Auditor:
 
     def batch_audit(
         self,
-        ssids: List[str],
+        ssids: list[str],
         max_attempts: int = 8000,
         include_pmkid: bool = True,
         include_predictions: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Audit multiple networks in a single batch using safe simulations.
 
         Runs simulate_attack() for each SSID (and optionally
@@ -439,7 +442,7 @@ class Auditor:
                 "Complete the consent checklist first."
             )
 
-        batch_results: List[Dict[str, Any]] = []
+        batch_results: list[dict[str, Any]] = []
 
         for ssid in ssids:
             attack = self.simulate_attack(ssid, max_attempts=max_attempts)
@@ -453,7 +456,7 @@ class Auditor:
 
             if include_predictions:
                 preds = self.predict_passwords(ssid, num_predictions=6)
-                pred_result: Dict[str, Any] = {
+                pred_result: dict[str, Any] = {
                     "type": "password_predictions",
                     "ssid": ssid,
                     "predictions": preds,
@@ -475,7 +478,7 @@ class Auditor:
         )
         return batch_results
 
-    def _simulate_scan(self) -> List[Dict[str, Any]]:
+    def _simulate_scan(self) -> list[dict[str, Any]]:
         """Return hard-coded but realistic networks for simulation mode.
 
         Signal strengths and AI hints are varied for demonstration value.
@@ -526,9 +529,9 @@ class Auditor:
     def _run_in_memory_attack(
         self,
         ssid: str,
-        wordlist_path: Optional[str],
+        wordlist_path: str | None,
         max_attempts: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Internal simulation engine.
 
         Uses the shared self.wordlist_generator (with any registered custom
@@ -554,7 +557,7 @@ class Auditor:
         if len(candidate) > 4:
             secret = candidate[:4] + "admin"
 
-        cracked_password: Optional[str] = None
+        cracked_password: str | None = None
         attempts = 0
 
         for password in wordlist[:max_attempts]:
@@ -591,7 +594,7 @@ class Auditor:
 
     def _run_pmkid_simulation(
         self, ssid: str, max_attempts: int
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Internal engine for PMKID simulation.
 
         Uses the shared self.wordlist_generator (with any registered custom
@@ -610,7 +613,7 @@ class Auditor:
         base = ssid.lower().replace(" ", "").replace("-", "").replace("_", "")
         secret = base + "123" if len(base) < 10 else base[:6] + "admin"
 
-        cracked_password: Optional[str] = None
+        cracked_password: str | None = None
         attempts = 0
 
         for password in wordlist[:max_attempts]:
@@ -649,7 +652,7 @@ class Auditor:
             "timestamp": datetime.now().isoformat(),
         }
 
-    def _simulate_handshake_analysis(self, capfile: str) -> Dict[str, Any]:
+    def _simulate_handshake_analysis(self, capfile: str) -> dict[str, Any]:
         """Return realistic handshake metadata for simulation or fallback."""
         return {
             "has_handshake": True,
@@ -669,7 +672,7 @@ class Auditor:
         }
 
     def _generate_hashcat_content(
-        self, ssid: Optional[str], hash_mode: str
+        self, ssid: str | None, hash_mode: str
     ) -> str:
         """Internal helper that builds a realistic .22000 file with comments.
 
@@ -724,8 +727,8 @@ class Auditor:
     def build_report(
         self,
         title: str = "WaveBrute Ethical Audit Report",
-        output_path: Optional[str] = None,
-        format: str = "pdf",
+        output_path: str | None = None,
+        format: str = "pdf",  # noqa: A002
     ) -> str:
         """Generate a professional report from all collected results.
 
@@ -773,7 +776,7 @@ class Auditor:
         self.consent_manager.log_audit("build_report", {"title": title, "format": fmt, "path": output_path})
         return os.path.abspath(output_path)
 
-    def get_results(self) -> List[Dict[str, Any]]:
+    def get_results(self) -> list[dict[str, Any]]:
         """Return a shallow copy of all results collected during this session."""
         return list(self.results)
 
