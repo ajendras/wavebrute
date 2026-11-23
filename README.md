@@ -60,7 +60,7 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 
 ## 📦 Installation
 
-**Requirements:** Python 3.8+, `kivy`, `scapy`, `reportlab`, `jinja2`, `click`. For live scanning a wireless interface is needed (simulation mode requires nothing). For Android builds, install Buildozer.
+**Requirements:** Python 3.9+, `kivy`, `scapy`, `reportlab`, `jinja2`, `click`. For live scanning a wireless interface is needed (simulation mode requires nothing). For Android builds, install Buildozer.
 
 **Android users:** Download the latest **signed APK** from the [GitHub Releases](https://github.com/ajendras/wavebrute/releases) page (prebuilt by CI). Requires Android 8.0+. The APK defaults to safe simulation mode; live operations require completing the ethics checklist.
 
