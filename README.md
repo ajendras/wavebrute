@@ -25,7 +25,7 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 
 - **Safe-by-default simulation** — run full audits in memory with zero risk
 - **Ethics Guard** — mandatory consent checklist and audit logging before any live action
-- **Neo-brutalist GUI** — thick borders, screaming yellow/pink/lime blocks, chunky buttons that work on desktop and Android
+- **Neo-brutalist GUI** — thick borders, screaming yellow/pink/lime blocks, chunky buttons that work on desktop and Android; now with toggleable dark theme variant
 - **One-command PDF reports** — professional outputs with timelines, AI hints, and responsible recommendations
 - **Real Android APK** — built with Buildozer, complete with location/WiFi permissions
 
@@ -54,7 +54,7 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 <tr>
 <td valign="top">🔨 <b>Hashcat Export</b><br>Optional .22000 file generation for real offline cracking with hashcat (simulation data + real-capture instructions)</td>
 <td valign="top">🔌 <b>Plugin System</b><br>Register custom Python mutators or load .py plugins to extend wordlist generation with domain-specific rules, leetspeak, corporate patterns etc.</td>
-<td valign="top">🔢 <b>Batch Auditing</b><br>Audit multiple networks in one command (attack + PMKID + predictions). Results are aggregated for one-click reporting.</td>
+<td valign="top">🌑 <b>Dark Theme</b><br>Toggleable dark neo-brutalist variant with near-black background, neon pink/lime/yellow accents and thick high-contrast borders</td>
 </tr>
 </table>
 
@@ -245,11 +245,11 @@ print("Generated:", path)
 
 <details><summary>GUI usage</summary>
 
-Launch with `python -m wavebrute.gui.app`. The app provides four screens (`ScanScreen`, `AttackScreen`, `CaptureScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 3px borders and 6dp hard shadows. The **CaptureScreen** implements capture file upload via a FileChooser popup (filtered to .cap/.pcap/.pcapng) and displays full handshake analysis results (leveraging `analyze_handshake()` and automatic simulation fallback when the file is absent). The Attack screen includes a dedicated PMKID simulation button. **Android UI now uses `kivy.metrics.dp` for all sizes with minimum 64dp touch targets for proper scaling and finger-friendly interaction across device densities.**
+Launch with `python -m wavebrute.gui.app`. The app provides four screens (`ScanScreen`, `AttackScreen`, `CaptureScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 4px thick borders and 6dp hard shadows. A persistent header contains a theme toggle button ("DARK"/"LIGHT") that switches between light and dark neo-brutalist modes while preserving brutalist contrast (neon pink `#ff004d`, lime `#00ff9f`, yellow borders on near-black background for dark mode). The **CaptureScreen** implements capture file upload via a FileChooser popup (filtered to .cap/.pcap/.pcapng) and displays full handshake analysis results (leveraging `analyze_handshake()` and automatic simulation fallback when the file is absent). The Attack screen includes a dedicated PMKID simulation button. **Android UI now uses `kivy.metrics.dp` for all sizes with minimum 64dp touch targets for proper scaling and finger-friendly interaction across device densities.**
 
 The plugin system is available through the shared `Auditor` instance (register_mutator / load_mutator_plugin) before starting an attack or wordlist generation. The AI Predictor (powered by the bundled tiny model) is used automatically by wordlist generation and can be called via `auditor.predict_passwords(...)`.
 
-Prebuilt signed APKs are produced by CI and attached to every GitHub Release.
+Prebuilt signed APKs are produced by CI and attached to every GitHub Release. Dark theme is available on both desktop and Android.
 
 </details>
 
@@ -266,6 +266,7 @@ Prebuilt signed APKs are produced by CI and attached to every GitHub Release.
 | `mutators`          | `[]`        | List of registered mutator callables (via `register_mutator()` or loaded plugins). Built-ins include number suffixes, leetspeak and case variations. |
 | `ai_model`          | `TinyPasswordModel` | Bundled tiny pure-Python on-device model for password prediction. Trained offline on a synthetic corpus of weak passwords and SSID associations; zero extra runtime dependencies. Used by `generate_ai_suggestions`, `predict_passwords()` and wordlist augmentation. |
 | `batch`             | N/A         | New `batch_audit(ssids, max_attempts=8000, include_pmkid=True, include_predictions=True)` and corresponding CLI `batch` subcommand. Aggregates results from multiple networks for unified reporting. |
+| `dark_theme`        | `False`     | GUI only. Set via constructor (`WaveBruteApp(dark_theme=True)`) or toggle button in header. Dark variant uses near-black background with neon accents while retaining thick borders and brutalist contrast. |
 
 ## 🧩 Architecture
 
@@ -289,7 +290,7 @@ graph TD
     style Consent fill:#00ff9f,color:#000
 ```
 
-The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`. The new plugin system is exposed via `Auditor.register_mutator()` / `Auditor.load_mutator_plugin()` (and directly on `WordlistGenerator`). The tiny on-device model (`TinyPasswordModel`) is bundled with pre-computed patterns derived from training on common weak passwords; it powers `generate_ai_suggestions()` and the new `predict_passwords()` API. The new `batch_audit()` method runs full simulation pipelines across many SSIDs in one call and aggregates results for easy reporting.
+The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`. The new plugin system is exposed via `Auditor.register_mutator()` / `Auditor.load_mutator_plugin()` (and directly on `WordlistGenerator`). The tiny on-device model (`TinyPasswordModel`) is bundled with pre-computed patterns derived from training on common weak passwords; it powers `generate_ai_suggestions()` and the new `predict_passwords()` API. The new `batch_audit()` method runs full simulation pipelines across many SSIDs in one call and aggregates results for easy reporting. The GUI now includes a runtime theme toggle that switches color palettes while preserving all brutalist styling (thick borders, hard shadows, chunky buttons).
 
 ## 📁 Project structure
 
@@ -307,8 +308,8 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 │   ├── report.py                  # ReportBuilder with from_results(), to_pdf(), render_template()
 │   ├── utils.py                   # TinyPasswordModel (trained & bundled), validate_mac(), parse_cap_file(), generate_ai_suggestions()
 │   ├── gui/
-│   │   ├── app.py                 # WaveBruteApp with neo-brutalist styling and ScreenManager
-│   │   └── screens.py             # ScanScreen, AttackScreen, CaptureScreen, ReportScreen + BrutalistButton/Label
+│   │   ├── app.py                 # WaveBruteApp with neo-brutalist styling, dark theme support and ScreenManager
+│   │   └── screens.py             # ScanScreen, AttackScreen, CaptureScreen, ReportScreen + BrutalistButton/Label with theme awareness
 │   └── tests/
 │       └── test_auditor.py        # Pytest cases for simulation, ethics, reporting
 ├── examples/
@@ -339,7 +340,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Implement capture file upload and analysis in GUI
 - [x] Add batch mode for auditing multiple networks
 - [x] Create prebuilt signed APK releases in CI
-- [ ] Add dark theme variant while keeping brutalist contrast
+- [x] Add dark theme variant while keeping brutalist contrast
 - [ ] Support WPS PIN brute-force simulation
 
 > 🤖 This roadmap is worked through continuously — ideas and PRs welcome!

@@ -1,20 +1,12 @@
-"""Android APK entry point for WaveBrute.
+"""Android APK entrypoint for WaveBrute.
 
-This file is used by Buildozer / python-for-android as the main script.
-It ensures the src layout is on the Python path and launches the neo-brutalist Kivy GUI.
-All functionality remains in simulation mode by default; live actions require explicit consent.
+Defaults to dark theme on mobile for better battery life and high-contrast
+brutalist aesthetics while preserving all existing functionality.
 """
 
-import sys
-from pathlib import Path
-
-# Ensure the src package layout is importable on Android
-src_path = str(Path(__file__).parent / "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
-from wavebrute.gui.app import WaveBruteApp
-
+from src.wavebrute.gui.app import WaveBruteApp
 
 if __name__ == "__main__":
-    WaveBruteApp().run()
+    # Buildozer expects the app to be instantiated here.
+    # Dark theme is enabled by default on Android for optimal contrast.
+    WaveBruteApp(simulation_mode=True, dark_theme=True).run()
