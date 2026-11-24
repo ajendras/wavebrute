@@ -767,14 +767,16 @@ class Auditor:
 
         builder = ReportBuilder.from_results(self.results)
         if fmt == "pdf":
-            builder.to_pdf(title, output_path)
+            final_path = builder.to_pdf(title, output_path)
         elif fmt == "md":
-            builder.to_markdown(title, output_path)
+            final_path = builder.to_markdown(title, output_path)
         elif fmt == "html":
-            builder.to_html(title, output_path)
+            final_path = builder.to_html(title, output_path)
+        else:
+            final_path = output_path
 
-        self.consent_manager.log_audit("build_report", {"title": title, "format": fmt, "path": output_path})
-        return os.path.abspath(output_path)
+        self.consent_manager.log_audit("build_report", {"title": title, "format": fmt, "path": final_path})
+        return final_path
 
     def get_results(self) -> list[dict[str, Any]]:
         """Return a shallow copy of all results collected during this session."""
