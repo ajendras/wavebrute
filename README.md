@@ -56,6 +56,11 @@ Existing wireless testing tools are either ancient CLIs or shady mobile apps wit
 <td valign="top">🔌 <b>Plugin System</b><br>Register custom Python mutators or load .py plugins to extend wordlist generation with domain-specific rules, leetspeak, corporate patterns etc.</td>
 <td valign="top">🌑 <b>Dark Theme</b><br>Toggleable dark neo-brutalist variant with near-black background, neon pink/lime/yellow accents and thick high-contrast borders</td>
 </tr>
+<tr>
+<td valign="top">🔢 <b>WPS PIN Simulator</b><br>Safe in-memory brute-force of 8-digit WPS PINs (common weak defaults, checksum logic). Demonstrates why WPS must be disabled on all routers.</td>
+<td valign="top"></td>
+<td valign="top"></td>
+</tr>
 </table>
 
 ## 📦 Installation
@@ -105,6 +110,7 @@ auditor.register_mutator(company_specific_mutator)
 networks = auditor.scan()
 attack = auditor.simulate_attack("Cafe_Rouge_FreeWiFi", max_attempts=5000)
 pmkid = auditor.simulate_pmkid_attack("IoT-Devices")
+wps = auditor.simulate_wps_attack("IoT-Devices")
 preds = auditor.predict_passwords("IoT-Devices")
 analysis = auditor.analyze_handshake("demo.cap")
 export_path = auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
@@ -121,6 +127,7 @@ print(f"Batch audited {len(batch_results)} simulation results")
 print(f"Found {len(networks)} networks")
 print(f"Simulation cracked: {attack['success']} ({attack.get('password')})")
 print(f"PMKID sim cracked: {pmkid['success']} ({pmkid.get('password')})")
+print(f"WPS sim cracked: {wps['success']} (PIN: {wps.get('pin')})")
 print(f"Model predictions: {preds}")
 print(f"Hashcat file: {export_path}")
 print(f"Report saved to: {report_path}")
@@ -142,6 +149,9 @@ wavebrute attack --ssid "Linksys-5G" --max-attempts 8000
 
 # Simulate a PMKID attack (client-less)
 wavebrute pmkid --ssid "Vulnerable-Router" --max-attempts 8000
+
+# Simulate a WPS PIN brute-force attack (8-digit PINs)
+wavebrute wps --ssid "IoT-Devices" --max-attempts 11000
 
 # Export for offline cracking with hashcat
 wavebrute hashcat --ssid "Cafe_Rouge_FreeWiFi" --output target.22000
@@ -184,11 +194,12 @@ auditor.wordlist_generator.save("iot_wordlist.txt", words=wordlist)
 
 result = auditor.simulate_attack("IoT-Devices", max_attempts=10000)
 pmkid_result = auditor.simulate_pmkid_attack("IoT-Devices")
+wps_result = auditor.simulate_wps_attack("IoT-Devices")
 preds = auditor.predict_passwords("IoT-Devices", num_predictions=8)
 export_path = auditor.export_for_hashcat("IoT-Devices")
 report = auditor.build_report("IoT Devices Audit")
 
-# New batch mode (runs attack/PMKID/predictions across many networks)
+# New batch mode (runs attack/PMKID/WPS/predictions across many networks)
 batch_results = auditor.batch_audit(
     ssids=["TestNet1", "TestNet2"],
     max_attempts=5000,
@@ -200,6 +211,7 @@ print(f"Batch completed with {len(batch_results)} results")
 print("Report:", report)
 print("Hashcat export:", export_path)
 print("Model predictions:", preds)
+print("WPS PIN result:", wps_result)
 ```
 
 <details><summary>Advanced: Handshake analysis + custom report</summary>
@@ -223,6 +235,10 @@ print(analysis["crack_time_estimate"])
 pmkid = auditor.simulate_pmkid_attack("NETGEAR_Guest")
 print(f"PMKID success: {pmkid['success']}")
 
+# WPS PIN simulation
+wps = auditor.simulate_wps_attack("IoT-Devices")
+print(f"WPS success: {wps['success']} PIN: {wps.get('pin')}")
+
 # Model-based password prediction (trained tiny on-device model)
 preds = auditor.predict_passwords("NETGEAR_Guest", num_predictions=6)
 print("Top predictions:", preds)
@@ -245,7 +261,7 @@ print("Generated:", path)
 
 <details><summary>GUI usage</summary>
 
-Launch with `python -m wavebrute.gui.app`. The app provides four screens (`ScanScreen`, `AttackScreen`, `CaptureScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 4px thick borders and 6dp hard shadows. A persistent header contains a theme toggle button ("DARK"/"LIGHT") that switches between light and dark neo-brutalist modes while preserving brutalist contrast (neon pink `#ff004d`, lime `#00ff9f`, yellow borders on near-black background for dark mode). The **CaptureScreen** implements capture file upload via a FileChooser popup (filtered to .cap/.pcap/.pcapng) and displays full handshake analysis results (leveraging `analyze_handshake()` and automatic simulation fallback when the file is absent). The Attack screen includes a dedicated PMKID simulation button. **Android UI now uses `kivy.metrics.dp` for all sizes with minimum 64dp touch targets for proper scaling and finger-friendly interaction across device densities.**
+Launch with `python -m wavebrute.gui.app`. The app provides four screens (`ScanScreen`, `AttackScreen`, `CaptureScreen`, `ReportScreen`) that share a single `Auditor` instance. All buttons use the `BrutalistButton` and `BrutalistLabel` widgets with 4px thick borders and 6dp hard shadows. A persistent header contains a theme toggle button ("DARK"/"LIGHT") that switches between light and dark neo-brutalist modes while preserving brutalist contrast (neon pink `#ff004d`, lime `#00ff9f`, yellow borders on near-black background for dark mode). The **CaptureScreen** implements capture file upload via a FileChooser popup (filtered to .cap/.pcap/.pcapng) and displays full handshake analysis results (leveraging `analyze_handshake()` and automatic simulation fallback when the file is absent). The Attack screen includes a dedicated PMKID simulation button and a new WPS simulation button. **Android UI now uses `kivy.metrics.dp` for all sizes with minimum 64dp touch targets for proper scaling and finger-friendly interaction across device densities.**
 
 The plugin system is available through the shared `Auditor` instance (register_mutator / load_mutator_plugin) before starting an attack or wordlist generation. The AI Predictor (powered by the bundled tiny model) is used automatically by wordlist generation and can be called via `auditor.predict_passwords(...)`.
 
@@ -261,6 +277,7 @@ Prebuilt signed APKs are produced by CI and attached to every GitHub Release. Da
 | `interface`         | `"wlan0"` (Linux) or `"Wi-Fi"` (Windows) | Wireless interface name (ignored in simulation mode; used by `scan_wifi`). Npcap required on Windows for live/native Scapy support. |
 | `--simulation`      | `True`      | CLI flag for `scan`, `attack`, `wordlist` (live mode requires consent) |
 | `max_attempts`      | `12000`     | Maximum simulation iterations for `simulate_attack` and CLI attack command |
+| `wps_max_attempts`  | `11000`     | Default for `simulate_wps_attack` (reflects effective 8-digit PIN search space after checksum) |
 | `size`              | `1500`      | Approximate wordlist size for `WordlistGenerator.from_ssid` and CLI wordlist |
 | `hash_mode`         | `22000`     | Hashcat hash type used by `export_for_hashcat()` (modern combined PMKID/handshake format) |
 | `mutators`          | `[]`        | List of registered mutator callables (via `register_mutator()` or loaded plugins). Built-ins include number suffixes, leetspeak and case variations. |
@@ -280,6 +297,7 @@ graph TD
     Auditor --> Gen[WordlistGenerator<br/>from_ssid + mutators + plugins]
     Auditor --> Model[TinyPasswordModel<br/>utils.py - bundled trained patterns]
     Auditor --> PMKID[simulate_pmkid_attack<br/>_run_pmkid_simulation]
+    Auditor --> WPS[simulate_wps_attack<br/>_run_wps_simulation]
     Auditor --> Hashcat[export_for_hashcat<br/>_generate_hashcat_content]
     Auditor --> Batch[batch_audit<br/>multiple networks]
     Auditor --> Utils[utils.py<br/>validate_mac, parse_cap_file, generate_ai_suggestions]
@@ -290,7 +308,7 @@ graph TD
     style Consent fill:#00ff9f,color:#000
 ```
 
-The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`. The new plugin system is exposed via `Auditor.register_mutator()` / `Auditor.load_mutator_plugin()` (and directly on `WordlistGenerator`). The tiny on-device model (`TinyPasswordModel`) is bundled with pre-computed patterns derived from training on common weak passwords; it powers `generate_ai_suggestions()` and the new `predict_passwords()` API. The new `batch_audit()` method runs full simulation pipelines across many SSIDs in one call and aggregates results for easy reporting. The GUI now includes a runtime theme toggle that switches color palettes while preserving all brutalist styling (thick borders, hard shadows, chunky buttons).
+The central `Auditor` class orchestrates scanning, simulation, handshake analysis, hashcat export and reporting while enforcing consent through `ConsentManager`. All live operations are optional; simulation mode uses deterministic data from `_simulate_scan`, `_run_in_memory_attack`, `_run_pmkid_simulation`, `_run_wps_simulation`, `_simulate_handshake_analysis` and `_generate_hashcat_content`. The Kivy GUI and Click CLI both consume the same public API exported in `__init__.py`. The new plugin system is exposed via `Auditor.register_mutator()` / `Auditor.load_mutator_plugin()` (and directly on `WordlistGenerator`). The tiny on-device model (`TinyPasswordModel`) is bundled with pre-computed patterns derived from training on common weak passwords; it powers `generate_ai_suggestions()` and the new `predict_passwords()` API. The new `batch_audit()` method runs full simulation pipelines across many SSIDs in one call and aggregates results for easy reporting. The GUI now includes a runtime theme toggle that switches color palettes while preserving all brutalist styling (thick borders, hard shadows, chunky buttons).
 
 ## 📁 Project structure
 
@@ -300,8 +318,8 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 ├── buildozer.spec                 # Android packaging config with permissions
 ├── src/wavebrute/
 │   ├── __init__.py                # Public API: Auditor, WordlistGenerator, ReportBuilder, ConsentManager, TinyPasswordModel
-│   ├── auditor.py                 # Core Auditor class with scan(), simulate_attack(), simulate_pmkid_attack(), analyze_handshake(), export_for_hashcat(), build_report(), predict_passwords()
-│   ├── cli.py                     # Click commands: scan, wordlist, attack, pmkid, hashcat, report, ethics
+│   ├── auditor.py                 # Core Auditor class with scan(), simulate_attack(), simulate_pmkid_attack(), simulate_wps_attack(), analyze_handshake(), export_for_hashcat(), build_report(), predict_passwords()
+│   ├── cli.py                     # Click commands: scan, wordlist, attack, pmkid, wps, hashcat, report, ethics
 │   ├── ethics.py                  # ConsentManager with show_checklist(), require_consent(), log_audit()
 │   ├── scanner.py                 # scan_wifi() and parse_iwlist() (Linux + Windows/Npcap)
 │   ├── wordlist.py                # WordlistGenerator with from_ssid(), augment_with_ai(), save(), register_mutator(), load_mutator_plugin()
@@ -313,7 +331,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 │   └── tests/
 │       └── test_auditor.py        # Pytest cases for simulation, ethics, reporting
 ├── examples/
-│   └── audit_flow.py              # Runnable full pipeline: scan → wordlist → simulated attack → pmkid → hashcat export → report
+│   └── audit_flow.py              # Runnable full pipeline: scan → wordlist → simulated attack → pmkid → wps → hashcat export → report
 ├── main.py                        # Android APK entrypoint (imports WaveBruteApp)
 └── tests/test_auditor.py          # Comprehensive test suite (simulation only)
 ```
@@ -324,7 +342,7 @@ The central `Auditor` class orchestrates scanning, simulation, handshake analysi
 pytest
 ```
 
-The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simulate_attack` (including deterministic success path), the new `simulate_pmkid_attack`, wordlist augmentation, ethics consent checks (with mocked checklist), `analyze_handshake`, `export_for_hashcat`, `build_report`, error paths, full integration flows, **the new plugin system** (custom mutators + dynamic plugin loading from .py files), **and the bundled `TinyPasswordModel` + `predict_passwords()`** — all in safe simulation mode with no real network activity. New tests were added for `batch_audit()` (including consent mocking, error paths, result aggregation and parameter combinations).
+The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simulate_attack` (including deterministic success path), the new `simulate_pmkid_attack`, wordlist augmentation, ethics consent checks (with mocked checklist), `analyze_handshake`, `export_for_hashcat`, `build_report`, error paths, full integration flows, **the new plugin system** (custom mutators + dynamic plugin loading from .py files), **and the bundled `TinyPasswordModel` + `predict_passwords()`** — all in safe simulation mode with no real network activity. New tests were added for `batch_audit()` (including consent mocking, error paths, result aggregation and parameter combinations) and for the new `simulate_wps_attack()` (deterministic PIN recovery, recommendations, consent enforcement).
 
 ## 📍 Roadmap
 
@@ -341,7 +359,7 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Add batch mode for auditing multiple networks
 - [x] Create prebuilt signed APK releases in CI
 - [x] Add dark theme variant while keeping brutalist contrast
-- [ ] Support WPS PIN brute-force simulation
+- [x] Support WPS PIN brute-force simulation
 
 > 🤖 This roadmap is worked through continuously — ideas and PRs welcome!
 <!-- roadmap:end -->

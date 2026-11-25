@@ -8,8 +8,10 @@ and Android deployment via Buildozer.
 
 All live operations are guarded by an Ethics Guard. Simulation mode is
 enabled by default for classrooms and training. The new simulate_pmkid_attack()
-and export_for_hashcat() demonstrate client-less RSN PMKID extraction,
-cracking simulation, and direct interoperability with hashcat.
+and simulate_wps_attack() demonstrate client-less RSN PMKID extraction,
+8-digit WPS PIN brute-force, cracking simulation, and direct interoperability
+with hashcat and real-world attack vectors (with strong recommendations to
+disable WPS).
 
 The plugin system (register_mutator / load_mutator_plugin) lets users extend
 wordlist generation with arbitrary Python logic or external .py plugin files.
@@ -26,7 +28,7 @@ screen gracefully falls back to realistic simulation when the selected file
 does not exist.
 
 The new batch_audit() method allows auditing many networks in a single call
-(running attack + optional PMKID + predictions simulations) and aggregates
+(running attack + optional PMKID + WPS + predictions simulations) and aggregates
 results for easy one-command reporting.
 
 Public API:
@@ -38,6 +40,7 @@ Public API:
     auditor = Auditor(simulation_mode=True)
     auditor.register_mutator(lambda w: [w + "2025"])
     auditor.simulate_pmkid_attack("MyNetwork")
+    auditor.simulate_wps_attack("IoT-Devices")
     auditor.export_for_hashcat("MyNetwork")
     model = TinyPasswordModel().train()
     print(model.predict("CafeWiFi", 5))
