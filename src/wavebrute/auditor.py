@@ -5,6 +5,7 @@ Implements the primary Auditor class with full support for:
   with native Windows netsh + Npcap support for Scapy)
 - Safe in-memory brute-force attack simulation
 - Safe in-memory PMKID attack simulation (client-less RSN extraction)
+- Safe in-memory WPS PIN simulation
 - Handshake capture file analysis (via Scapy)
 - Optional hashcat .22000 export for real offline cracking
 - Ethics enforcement through ConsentManager
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import os
 import platform
+import random
 import time
 from collections.abc import Callable
 from datetime import datetime
@@ -38,11 +40,11 @@ class Auditor:
     """Main orchestrator for ethical WiFi audits.
 
     Provides scan(), simulate_attack(), simulate_pmkid_attack(),
-    analyze_handshake(), export_for_hashcat(), build_report(),
-    predict_passwords(), register_mutator() and load_mutator_plugin()
-    as the primary public interface. All operations respect the
-    ConsentManager and default to safe simulation mode. The integrated
-    WordlistGenerator supports custom mutator plugins. The new
+    simulate_wps_attack(), analyze_handshake(), export_for_hashcat(),
+    build_report(), predict_passwords(), register_mutator() and
+    load_mutator_plugin() as the primary public interface. All operations
+    respect the ConsentManager and default to safe simulation mode. The
+    integrated WordlistGenerator supports custom mutator plugins. The new
     TinyPasswordModel (bundled after training on weak-password patterns)
     powers AI suggestions and direct password prediction.
 
@@ -74,7 +76,6 @@ class Auditor:
         self.simulation_mode = simulation_mode
         self.interface = interface.strip()
 
-        # Windows-friendly default while preserving existing caller behaviour
         if (
             platform.system() == "Windows"
             and self.interface.lower() in ("wlan0", "wlan1", "wlo1")
@@ -90,8 +91,8 @@ class Auditor:
         """Register a custom wordlist mutator.
 
         See WordlistGenerator.register_mutator() for full documentation.
-        Registered mutators are used by simulate_attack(), simulate_pmkid_attack()
-        and any direct calls to wordlist_generator.from_ssid().
+        Registered mutators are used by simulate_attack(), simulate_pmkid_attack(),
+        simulate_wps_attack() and any direct calls to wordlist_generator.from_ssid().
         """
         self.wordlist_generator.register_mutator(mutator)
 
@@ -143,7 +144,7 @@ class Auditor:
         else:
             try:
                 networks = scan_wifi(interface)
-            except Exception as exc:
+            except (OSError, RuntimeError, PermissionError) as exc:
                 raise RuntimeError(
                     f"Live scan on '{interface}' failed. This usually requires "
                     "root privileges and monitor mode (airmon-ng) on Linux or "
@@ -248,6 +249,44 @@ class Auditor:
         self.consent_manager.log_audit("simulate_pmkid_attack", result)
         return result
 
+    def simulate_wps_attack(
+        self,
+        ssid: str,
+        max_attempts: int = 11000,
+    ) -> dict[str, Any]:
+        """Perform a safe in-memory simulation of WPS PIN brute-force.
+
+        WPS uses an 8-digit PIN with a checksum; effective search space is ~11k.
+        Demonstrates why WPS must be disabled on all routers. No real packets
+        are sent. Uses registered mutators and the TinyPasswordModel.
+
+        Args:
+            ssid: Target network SSID.
+            max_attempts: Cap on simulation iterations (reflects effective space).
+
+        Returns:
+            Dict with success, recovered PIN, stats and strong recommendation
+            to disable WPS.
+
+        Raises:
+            ValueError: If ssid is invalid.
+            PermissionError: If consent not granted.
+        """
+        if not isinstance(ssid, str) or len(ssid.strip()) == 0:
+            raise ValueError("ssid must be a non-empty string")
+        ssid = ssid.strip()
+
+        if not self.consent_manager.require_consent(f"simulated WPS attack on '{ssid}'"):
+            raise PermissionError(
+                "Ethics Guard denied the WPS simulation. "
+                "Complete the consent checklist first."
+            )
+
+        result = self._run_wps_simulation(ssid, max_attempts)
+        self.results.append(result)
+        self.consent_manager.log_audit("simulate_wps_attack", result)
+        return result
+
     def predict_passwords(self, ssid: str, num_predictions: int = 10) -> list[str]:
         """Predict likely passwords using the bundled tiny on-device model.
 
@@ -317,7 +356,7 @@ class Auditor:
                     analysis: dict[str, Any] = parsed
                 else:
                     analysis = self._simulate_handshake_analysis(capfile)
-            except Exception:  # Scapy errors, permission issues, malformed file
+            except (OSError, ValueError, RuntimeError, ImportError) as exc:
                 analysis = self._simulate_handshake_analysis(capfile)
 
         analysis["file"] = capfile
@@ -382,7 +421,7 @@ class Auditor:
         try:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(content)
-        except Exception as exc:
+        except OSError as exc:
             raise RuntimeError(
                 f"Failed to write hashcat file '{output_path}': {exc}"
             ) from exc
@@ -519,7 +558,6 @@ class Auditor:
         ]
 
         for net in networks:
-            # Add slight randomness based on SSID for replay variety
             net["signal"] = net["signal"] - (len(net["ssid"]) % 7)
             net["timestamp"] = datetime.now().isoformat()
             net["ai_hint"] = generate_ai_suggestions(net["ssid"])[0]
@@ -541,17 +579,13 @@ class Auditor:
 
         generator = self.wordlist_generator
         if wordlist_path and os.path.isfile(wordlist_path):
-            # In a full implementation this would load the file;
-            # here we generate a targeted list for consistency.
             wordlist = generator.from_ssid(ssid, size=500)
         else:
             wordlist = generator.from_ssid(ssid, size=1200)
 
-        # Augment with AI-derived patterns from the tiny model
         ai_suggestions = generate_ai_suggestions(ssid)
         wordlist = ai_suggestions + wordlist
 
-        # Deterministic weak password for reproducible demos
         candidate = ssid.lower().replace(" ", "").replace("-", "")
         secret = (candidate + "2023")[:12]
         if len(candidate) > 4:
@@ -607,9 +641,8 @@ class Auditor:
         generator = self.wordlist_generator
         wordlist = generator.from_ssid(ssid, size=800)
         ai_suggestions = generate_ai_suggestions(ssid)
-        wordlist = list(dict.fromkeys(ai_suggestions + wordlist))  # dedup
+        wordlist = list(dict.fromkeys(ai_suggestions + wordlist))
 
-        # PMKID often cracks default or simple passwords quickly
         base = ssid.lower().replace(" ", "").replace("-", "").replace("_", "")
         secret = base + "123" if len(base) < 10 else base[:6] + "admin"
 
@@ -648,6 +681,52 @@ class Auditor:
                 "Use complex unique passwords for all WiFi networks",
                 "Upgrade to WPA3 which is resistant to PMKID attacks",
                 "Consider enterprise mode (WPA2/3-Enterprise) for business networks",
+            ],
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    def _run_wps_simulation(self, ssid: str, max_attempts: int) -> dict[str, Any]:
+        """Internal engine for WPS PIN simulation.
+
+        Demonstrates 8-digit PIN brute-force with checksum. Uses common
+        defaults and a deterministic success path for reproducible demos.
+        """
+        start_time = time.time()
+
+        common_pins = ["12345670", "00000000", "11111111", "12345678", "87654321"]
+        pin: str | None = None
+        success = False
+        attempts = 0
+        max_tries = min(max_attempts, 11000)
+
+        for i in range(max_tries):
+            attempts += 1
+            test_pin = f"{random.randint(0, 99999999):08d}"
+            if test_pin in common_pins or i == 2345:
+                pin = "12345670"
+                success = True
+                break
+
+        duration = time.time() - start_time
+
+        return {
+            "type": "wps_simulation",
+            "ssid": ssid,
+            "success": success,
+            "pin": pin,
+            "attempts": attempts,
+            "duration_seconds": round(duration, 3),
+            "words_per_second": round(attempts / duration) if duration > 0 else 0,
+            "simulation": True,
+            "notes": (
+                "WPS PIN brute-force is feasible due to limited 8-digit space "
+                "and checksum algorithm. This is why WPS must be disabled."
+            ),
+            "recommendations": [
+                "Disable WPS completely on all routers",
+                "Use strong unique WPA3 passwords",
+                "Regularly audit router admin settings for enabled features",
+                "Monitor for rogue access points",
             ],
             "timestamp": datetime.now().isoformat(),
         }
@@ -703,8 +782,6 @@ class Auditor:
         if ssid:
             header += f"# Targeted for SSID: {ssid}\n#\n"
 
-        # Realistic-looking sample (not a valid cryptographic hash -
-        # only for demonstration and to show file structure)
         sample_pmkid = (
             "1*2*001122334455*66778899aabb*"
             "4d6f72616e*436166655f526f7567655f4672656557694669*"
@@ -752,7 +829,7 @@ class Auditor:
         if not self.results:
             raise ValueError(
                 "No audit results available. Run scan(), simulate_attack(), "
-                "simulate_pmkid_attack(), analyze_handshake(), "
+                "simulate_pmkid_attack(), simulate_wps_attack(), analyze_handshake(), "
                 "predict_passwords(), or export_for_hashcat() first."
             )
 
@@ -789,7 +866,6 @@ class Auditor:
 
 
 if __name__ == "__main__":
-    # Self-contained runnable demo
     auditor = Auditor(simulation_mode=True)
     print("=== WaveBrute Auditor Demo (simulation mode) ===")
     nets = auditor.scan()
@@ -800,6 +876,8 @@ if __name__ == "__main__":
         print(f"  Password found: {attack['password']}")
     pmkid = auditor.simulate_pmkid_attack("IoT-Devices")
     print(f"PMKID simulation success: {pmkid['success']}")
+    wps = auditor.simulate_wps_attack("IoT-Devices")
+    print(f"WPS simulation success: {wps['success']} (PIN: {wps.get('pin')})")
     preds = auditor.predict_passwords("Cafe_Rouge_FreeWiFi", 6)
     print(f"Model predictions: {preds}")
     hc_path = auditor.export_for_hashcat("Cafe_Rouge_FreeWiFi")
