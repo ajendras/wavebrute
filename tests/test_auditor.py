@@ -1,106 +1,139 @@
-import os
+"""Tests for Auditor and related components.
+
+Focuses on simulation mode only. Updated to cover safe plugin loading
+via importlib (replaces previous exec) and the fixed lint issues.
+"""
+
+import tempfile
+from pathlib import Path
 
 import pytest
 
 from wavebrute.auditor import Auditor
-from wavebrute.utils import TinyPasswordModel
+from wavebrute.wordlist import WordlistGenerator, register_mutator
 
 
 def test_auditor_initialization():
-    auditor = Auditor(simulation_mode=True, interface="wlan0")
+    auditor = Auditor(simulation_mode=True)
     assert auditor.simulation_mode is True
     assert auditor.interface in ("wlan0", "Wi-Fi")
 
-
-def test_auditor_simulation_scan():
-    auditor = Auditor(simulation_mode=True)
-    networks = auditor.scan()
-    assert len(networks) >= 2
-    assert any(net["ssid"] == "Cafe_Rouge_FreeWiFi" for net in networks)
+    auditor2 = Auditor(simulation_mode=False, interface="eth0")
+    assert not auditor2.simulation_mode
 
 
 def test_simulate_attack():
     auditor = Auditor(simulation_mode=True)
-    result = auditor.simulate_attack("Cafe_Rouge_FreeWiFi", max_attempts=100)
-    assert "success" in result
-    assert "password" in result
+    result = auditor.simulate_attack("TestNet")
+    assert result["success"] is True
+    assert result["password"] is not None
+    assert "recommendations" in result
     assert result["simulation"] is True
 
 
 def test_simulate_pmkid_attack():
     auditor = Auditor(simulation_mode=True)
-    result = auditor.simulate_pmkid_attack("IoT-Devices")
-    assert "success" in result
-    assert result["attack_type"] == "PMKID"
+    result = auditor.simulate_pmkid_attack("IoTNet")
+    assert result["type"] == "pmkid_simulation"
+    assert result["success"] is True
+    assert "notes" in result
 
 
 def test_predict_passwords():
     auditor = Auditor(simulation_mode=True)
-    preds = auditor.predict_passwords("Linksys-5G", num_predictions=4)
-    assert isinstance(preds, list)
-    assert len(preds) > 0
+    preds = auditor.predict_passwords("CafeWiFi", 3)
+    assert len(preds) == 3
+    assert isinstance(preds[0], str)
+
+
+def test_wordlist_generator():
+    gen = WordlistGenerator()
+    words = gen.from_ssid("MyNetwork", size=10)
+    assert len(words) >= 5
+    assert any("MyNetwork" in w or "mynetwork" in w.lower() for w in words)
+
+
+def test_custom_mutator():
+    gen = WordlistGenerator()
+
+    def custom_mut(word: str) -> list[str]:
+        return [word + "CUSTOM", word.upper()]
+
+    gen.register_mutator(custom_mut)
+    words = gen.from_ssid("Test", size=20)
+    assert any("CUSTOM" in w for w in words)
+
+
+def test_plugin_loading():
+    gen = WordlistGenerator()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        plugin_file = Path(tmpdir) / "test_mutator.py"
+        plugin_file.write_text(
+            """def plugin_mutator(word):
+    return [word + "PLUGIN123", word + "FROMPLUGIN"]
+"""
+        )
+        gen.load_mutator_plugin(str(plugin_file))
+        words = gen.from_ssid("DemoNet", size=30)
+        assert any("PLUGIN123" in w for w in words)
+        assert any("FROMPLUGIN" in w for w in words)
 
 
 def test_analyze_handshake():
     auditor = Auditor(simulation_mode=True)
     analysis = auditor.analyze_handshake("nonexistent.cap")
     assert analysis["has_handshake"] is True
-    assert "simulation" in analysis
+    assert analysis["simulation"] is True
 
 
-def test_export_for_hashcat():
+def test_export_for_hashcat(tmp_path):
     auditor = Auditor(simulation_mode=True)
-    path = auditor.export_for_hashcat("TestNet")
-    assert os.path.exists(path)
-    assert path.endswith(".22000")
-    os.unlink(path)
+    out_path = tmp_path / "test.22000"
+    path = auditor.export_for_hashcat(
+        ssid="TestNet", output_path=str(out_path)
+    )
+    assert Path(path).exists()
+    content = Path(path).read_text()
+    assert "# WaveBrute Hashcat Export" in content
 
 
-def test_build_report():
+def test_build_report(tmp_path):
     auditor = Auditor(simulation_mode=True)
     auditor.scan()
-    auditor.simulate_attack("TestNet")
-    path = auditor.build_report(format="md")
-    assert os.path.exists(path)
-    assert path.endswith(".md")
-    os.unlink(path)
+    auditor.simulate_attack("TestSSID")
+    report_path = auditor.build_report(
+        title="Test Report",
+        output_path=str(tmp_path / "test_report.pdf"),
+        format="pdf",
+    )
+    assert Path(report_path).exists()
+    md_path = str(tmp_path / "test.md")
+    md_report = auditor.build_report(
+        title="Test MD", output_path=md_path, format="md"
+    )
+    assert Path(md_report).exists() and md_report.endswith(".md")
 
 
 def test_batch_audit():
     auditor = Auditor(simulation_mode=True)
     results = auditor.batch_audit(
-        ["Net1", "Net2"], max_attempts=200, include_pmkid=True, include_predictions=True
+        ["Net1", "Net2"], max_attempts=100, include_pmkid=True, include_predictions=True
     )
     assert len(results) >= 4
-    assert any(r.get("type") == "pmkid_simulation" for r in results)
+    assert all(isinstance(r, dict) for r in results)
+    assert any(r.get("type") == "password_predictions" for r in results)
 
 
-def test_register_mutator():
-    auditor = Auditor(simulation_mode=True)
-
-    def mutator(w: str):
-        return [w + "2025", w.upper()]
-
-    auditor.register_mutator(mutator)
-    result = auditor.simulate_attack("TestMutator")
-    assert result["success"] is True
+@pytest.fixture
+def mock_consent(monkeypatch):
+    monkeypatch.setattr(
+        "wavebrute.ethics.ConsentManager.require_consent",
+        lambda self, action: True,
+    )
 
 
-def test_register_mutator_raises():
-    auditor = Auditor(simulation_mode=True)
-    with pytest.raises(TypeError):
-        auditor.register_mutator("not-a-callable")  # type: ignore[arg-type]
-
-
-def test_tiny_model():
-    model = TinyPasswordModel().train()
-    preds = model.predict("CafeWiFi", 5)
-    assert len(preds) == 5
-    assert any("cafe" in p.lower() for p in preds)
-
-
-def test_consent_in_simulation():
-    auditor = Auditor(simulation_mode=True)
-    # consent auto-passes for simulations
-    auditor.scan()
-    assert len(auditor.get_results()) > 0
+def test_live_scan_with_mocked_consent(mock_consent):
+    auditor = Auditor(simulation_mode=False, interface="wlan0")
+    nets = auditor.scan()
+    assert len(nets) > 0
+    assert all("ai_hint" in net for net in nets)

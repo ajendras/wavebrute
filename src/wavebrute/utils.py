@@ -1,122 +1,81 @@
-"""Utility module for WaveBrute.
-
-Contains the TinyPasswordModel (bundled trained predictor), helpers for
-packet capture parsing with Scapy, AI suggestions, and MAC validation.
-The scapy import block has been sorted to satisfy isort (I001).
-"""
-
 from __future__ import annotations
 
-import os
 import random
 import re
-from collections.abc import Callable
 from typing import Any
-
-try:
-    from scapy.all import EAPOL, Dot11, rdpcap
-except ImportError:
-    EAPOL = Dot11 = rdpcap = None  # type: ignore[assignment]
 
 
 class TinyPasswordModel:
-    """Minimal pure-Python password predictor.
-
-    Uses hardcoded but realistic patterns derived from 'training' on
-    weak password datasets correlated with SSID keywords. Works offline
-    everywhere including Android.
-    """
+    """Bundled tiny model for password prediction without external deps."""
 
     def __init__(self) -> None:
-        self.patterns: dict[str, list[str]] = {
-            "base": ["password", "admin", "123456", "qwerty", "letmein"],
-            "ssid_based": ["wifi", "guest", "free", "2024", "123"],
-        }
-        self._trained = False
+        self.patterns = [
+            "password",
+            "admin",
+            "12345678",
+            "qwerty",
+            "abc123",
+            "letmein",
+        ]
+        self.suffixes = ["", "123", "2023", "2024", "2025", "!", "2024!"]
+        self.trained = False
 
     def train(self) -> TinyPasswordModel:
-        """Train (initialize) the model. Returns self for chaining."""
-        self._trained = True
+        """'Train' by preparing patterns. Returns self for chaining."""
+        self.trained = True
         return self
 
     def predict(self, ssid: str, num_predictions: int = 10) -> list[str]:
-        """Return top predicted passwords for the given SSID."""
-        if not self._trained:
+        """Return likely passwords based on SSID patterns."""
+        if not self.trained:
             self.train()
+        if not ssid:
+            return self.patterns[:num_predictions]
 
-        cleaned = (
-            ssid.lower()
-            .replace(" ", "")
-            .replace("-", "")
-            .replace("_", "")
-        )
-        candidates: list[str] = []
-
-        for p in self.patterns["base"]:
-            candidates.append(p)
-            candidates.append(cleaned + p)
-            candidates.append(p + cleaned[:4])
-
-        for suffix in self.patterns["ssid_based"]:
-            candidates.append(cleaned + suffix)
-            if len(cleaned) > 3:
-                candidates.append(cleaned[:4] + suffix)
-
-        # deterministic shuffle for tests
-        random.seed(42)
-        random.shuffle(candidates)
-        return list(dict.fromkeys(candidates))[:num_predictions]
+        base = re.sub(r"\W+", "", ssid.lower())
+        suggestions = set()
+        for p in self.patterns:
+            suggestions.add(p)
+            for suf in self.suffixes:
+                suggestions.add(base + suf)
+                suggestions.add(base[:4] + suf)
+                suggestions.add(p + suf)
+        preds = list(suggestions)[:num_predictions]
+        random.shuffle(preds)
+        return preds
 
 
 def get_or_train_model() -> TinyPasswordModel:
-    """Singleton-like accessor for the model."""
-    if not hasattr(get_or_train_model, "_instance"):
-        get_or_train_model._instance = TinyPasswordModel().train()  # type: ignore[attr-defined]
-    return get_or_train_model._instance  # type: ignore[attr-defined]
+    """Get a trained instance of the model (cached in real impl)."""
+    return TinyPasswordModel().train()
 
 
-def generate_ai_suggestions(ssid: str, num: int = 3) -> list[str]:
-    """Public helper used by Auditor and WordlistGenerator."""
+def generate_ai_suggestions(ssid: str, num: int = 5) -> list[str]:
+    """Public helper used by auditor and wordlist."""
     model = get_or_train_model()
     return model.predict(ssid, num)
 
 
-def parse_cap_file(filepath: str) -> dict[str, Any] | None:
-    """Parse .cap file for handshake evidence using Scapy.
+def validate_mac(mac: str) -> bool:
+    """Validate MAC address format."""
+    if not mac or not isinstance(mac, str):
+        return False
+    return bool(re.match(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$", mac))
 
-    Returns None gracefully if Scapy not available or parse fails.
-    """
-    if rdpcap is None or not os.path.isfile(filepath):
-        return {
-            "has_handshake": False,
-            "handshake_type": "unknown",
-            "notes": "Scapy not available or file missing - simulation fallback used",
-        }
 
+def parse_cap_file(capfile: str) -> dict[str, Any] | None:
+    """Parse .cap file for handshake using Scapy. Returns None on any error."""
     try:
-        packets = rdpcap(filepath, count=50)
-        eapol_count = sum(
-            1 for pkt in packets if pkt.haslayer(EAPOL)
-        )
-        dot11_count = sum(
-            1 for pkt in packets if pkt.haslayer(Dot11)
-        )
-        has_handshake = eapol_count >= 4
+        from scapy.all import rdpcap
+
+        packets = rdpcap(capfile)
+        # simplistic detection
+        has_eapol = any("EAPOL" in str(p) for p in packets)
         return {
-            "has_handshake": has_handshake,
-            "handshake_type": "4-way" if has_handshake else "none",
-            "eapol_frames": eapol_count,
-            "dot11_frames": dot11_count,
+            "has_handshake": has_eapol,
+            "packet_count": len(packets),
             "notes": "Parsed with Scapy",
         }
-    except Exception:  # broad to catch any scapy/runtime issues
+    except Exception:  # noqa: BLE001
+        # broad to catch any scapy/runtime issues
         return None
-
-
-def validate_mac(mac: str) -> bool:
-    """Return True if mac is a valid looking MAC address."""
-    if not isinstance(mac, str):
-        return False
-    return bool(
-        re.match(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$", mac.strip())
-    )

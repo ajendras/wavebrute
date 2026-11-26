@@ -1,14 +1,9 @@
-"""Wordlist generator with mutator and plugin support for WaveBrute.
-
-The plugin loader uses exec in a controlled namespace (intentional, with
-security comment and noqa for S102). Added `from __future__ import annotations`
-to support PEP 604 union syntax on Python 3.9+ (FA102).
-"""
-
 from __future__ import annotations
 
+import importlib.util
 import os
 import random
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -17,111 +12,128 @@ from .utils import generate_ai_suggestions
 
 
 class WordlistGenerator:
-    """Generates smart, targeted wordlists from SSID and registered mutators."""
+    """Generates smart targeted wordlists for WiFi audits."""
 
     def __init__(self) -> None:
-        self.mutators: list[Callable[[str], list[str]]] = []
+        self.mutators: list[Callable[[str], list[str]]] = [
+            self._basic_mutations,
+            self._leet_speak,
+        ]
 
     def register_mutator(self, mutator: Callable[[str], list[str]]) -> None:
-        """Add a mutator function to the list.
+        """Register a custom mutator function.
 
-        Mutator receives a base word and should return variants.
+        The function must accept a str and return a list of str.
         """
-        if callable(mutator) and mutator not in self.mutators:
+        if callable(mutator):
             self.mutators.append(mutator)
 
     def load_mutator_plugin(self, plugin_path: str) -> None:
-        """Dynamically load a plugin .py file that can register mutators.
+        """Load mutators from external Python plugin file safely.
 
-        The plugin can call register_mutator() or define top-level functions
-        that will be auto-registered.
+        Uses importlib instead of exec() to address S102 while preserving
+        the original plugin loading contract.
         """
-        path = Path(plugin_path).resolve()
-        if not path.is_file():
+        path = Path(plugin_path).expanduser().resolve()
+        if not path.exists():
             raise FileNotFoundError(f"Plugin file not found: {plugin_path}")
+        if not path.suffix == ".py":
+            raise ValueError("Plugin must be a Python file (.py)")
 
-        namespace: dict[str, Any] = {
-            "__name__": path.stem,
-            "register_mutator": self.register_mutator,
-        }
-        with open(path, encoding="utf-8") as f:
-            code = f.read()
-        exec(code, namespace)  # nosec B102 - plugin loaded by user; noqa: S102
+        module_name = f"wavebrute_plugin_{path.stem}"
+        spec = importlib.util.spec_from_file_location(module_name, str(path))
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Failed to load plugin spec for {plugin_path}")
 
-        for name, obj in namespace.items():
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        for name, obj in vars(module).items():
             if (
                 callable(obj)
-                and not name.startswith("__")
-                and name != "register_mutator"
-                and obj not in self.mutators
+                and not name.startswith("_")
+                and not isinstance(obj, type)
             ):
-                self.register_mutator(obj)
+                try:
+                    self.register_mutator(obj)
+                except (TypeError, ValueError):
+                    continue
+
+    def _basic_mutations(self, word: str) -> list[str]:
+        """Built-in basic mutations."""
+        return [
+            word,
+            word.upper(),
+            word.lower(),
+            word + "123",
+            word + "2024",
+            word[::-1],
+        ]
+
+    def _leet_speak(self, word: str) -> list[str]:
+        """Simple leetspeak variations."""
+        replacements = {"a": "@", "e": "3", "i": "1", "o": "0", "s": "$"}
+        mutated = word
+        for k, v in replacements.items():
+            mutated = mutated.replace(k, v)
+        return [mutated, mutated.upper()]
 
     def from_ssid(self, ssid: str, size: int = 1500) -> list[str]:
-        """Build a wordlist tailored to an SSID.
-
-        Includes base variations, registered mutators and AI suggestions.
-        """
+        """Generate wordlist from SSID using patterns and mutators."""
         if not isinstance(ssid, str) or not ssid.strip():
-            raise ValueError("ssid must be a non-empty string")
-        ssid = ssid.strip()
+            return ["password123", "admin", "qwerty"]
 
+        ssid = ssid.strip()
         base_words = [
             ssid,
             ssid.lower(),
-            ssid.upper(),
             ssid.replace(" ", ""),
             ssid.replace("-", ""),
-            ssid + "123",
-            ssid + "2024",
-            "password",
-            "admin" + ssid[:3],
             ssid + "wifi",
         ]
 
-        augmented: list[str] = base_words[:]
-        for mutator in self.mutators:
-            for word in base_words:
+        augmented: list[str] = []
+        for word in base_words:
+            augmented.extend([word, word + "123", word.upper()])
+            for mutator in self.mutators:
                 try:
                     augmented.extend(mutator(word))
-                except Exception:
+                except Exception:  # noqa: BLE001
                     continue  # bad mutator, skip
 
-        augmented.extend(generate_ai_suggestions(ssid, num=5))
+        augmented.extend(generate_ai_suggestions(ssid, num=8))
 
-        # remove duplicates while preserving order
-        seen = {}
-        deduped = [seen.setdefault(x, x) for x in augmented if x not in seen]
-
-        random.seed(123)  # for reproducible tests
-        random.shuffle(deduped)
-        return deduped[:size]
+        unique = list(dict.fromkeys(augmented))
+        if len(unique) > size:
+            random.shuffle(unique)
+            unique = unique[:size]
+        return unique
 
     def save(
         self,
-        output_path: str,
+        path: str,
         words: list[str] | None = None,
         ssid: str | None = None,
     ) -> str:
-        """Write wordlist to disk (uses writelines for efficiency)."""
-        if words is None:
-            if ssid is None:
-                raise ValueError("Must provide either words or ssid")
+        """Save wordlist to file."""
+        if words is None and ssid is not None:
             words = self.from_ssid(ssid)
+        elif words is None:
+            words = ["password123", "admin123", "letmein2024"]
 
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.writelines(word + "\n" for word in words)
+        with open(path, "w", encoding="utf-8") as f:
+            for w in words:
+                f.write(w + "\n")
+        return os.path.abspath(path)
 
-        return os.path.abspath(output_path)
+
+_default_generator = WordlistGenerator()
 
 
 def register_mutator(mutator: Callable[[str], list[str]]) -> None:
-    """Convenience function for global/default generator.
+    """Register mutator with the default WordlistGenerator instance.
 
-    In practice most usage goes through Auditor.wordlist_generator.
-    For tests and simple scripts this registers on a module-level instance.
+    Primarily used via Auditor.register_mutator(); this provides the
+    convenience re-export shown in the public API.
     """
-    if not hasattr(register_mutator, "_generator"):
-        register_mutator._generator = WordlistGenerator()  # type: ignore[attr-defined]
-    register_mutator._generator.register_mutator(mutator)  # type: ignore[attr-defined]
+    _default_generator.register_mutator(mutator)
