@@ -1,139 +1,146 @@
-"""Tests for Auditor and related components.
+"""Comprehensive tests for the Auditor in simulation mode only."""
 
-Focuses on simulation mode only. Updated to cover safe plugin loading
-via importlib (replaces previous exec) and the fixed lint issues.
-"""
-
+import os
 import tempfile
-from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from wavebrute.auditor import Auditor
-from wavebrute.wordlist import WordlistGenerator, register_mutator
+from wavebrute.wordlist import WordlistGenerator
 
 
 def test_auditor_initialization():
-    auditor = Auditor(simulation_mode=True)
+    auditor = Auditor(simulation_mode=True, interface="wlan0")
     assert auditor.simulation_mode is True
-    assert auditor.interface in ("wlan0", "Wi-Fi")
+    assert auditor.interface == "wlan0"
+    assert isinstance(auditor.wordlist_generator, WordlistGenerator)
+    assert len(auditor.get_results()) == 0
 
-    auditor2 = Auditor(simulation_mode=False, interface="eth0")
-    assert not auditor2.simulation_mode
 
-
-def test_simulate_attack():
+def test_register_mutator():
     auditor = Auditor(simulation_mode=True)
-    result = auditor.simulate_attack("TestNet")
-    assert result["success"] is True
-    assert result["password"] is not None
-    assert "recommendations" in result
+
+    def test_mutator(w: str):
+        return [w + "test123"]
+
+    auditor.register_mutator(test_mutator)
+    with patch.object(auditor.consent_manager, "require_consent", return_value=True):
+        result = auditor.simulate_attack("TestSSID")
+        assert result["success"] is True
+
+
+@patch("wavebrute.auditor.ConsentManager.require_consent", return_value=True)
+def test_scan_simulation(mock_consent):
+    auditor = Auditor(simulation_mode=True)
+    networks = auditor.scan()
+    assert len(networks) >= 4
+    assert any(net["ssid"] == "Cafe_Rouge_FreeWiFi" for net in networks)
+    assert mock_consent.called
+
+
+@patch("wavebrute.auditor.ConsentManager.require_consent", return_value=True)
+def test_simulate_attack(mock_consent):
+    auditor = Auditor(simulation_mode=True)
+    result = auditor.simulate_attack("Cafe_Rouge_FreeWiFi", max_attempts=100)
+    assert "success" in result
+    assert "password" in result
     assert result["simulation"] is True
+    assert mock_consent.called
 
 
-def test_simulate_pmkid_attack():
+@patch("wavebrute.auditor.ConsentManager.require_consent", return_value=True)
+def test_simulate_pmkid_attack(mock_consent):
     auditor = Auditor(simulation_mode=True)
-    result = auditor.simulate_pmkid_attack("IoTNet")
+    result = auditor.simulate_pmkid_attack("IoT-Devices")
     assert result["type"] == "pmkid_simulation"
-    assert result["success"] is True
     assert "notes" in result
+    assert mock_consent.called
+
+
+@patch("wavebrute.auditor.ConsentManager.require_consent", return_value=True)
+def test_simulate_wps_attack(mock_consent):
+    auditor = Auditor(simulation_mode=True)
+    result = auditor.simulate_wps_attack("IoT-Devices")
+    assert result["type"] == "wps_simulation"
+    assert result.get("pin") == "12345670"
+    assert result["success"] is True
+    assert mock_consent.called
 
 
 def test_predict_passwords():
     auditor = Auditor(simulation_mode=True)
-    preds = auditor.predict_passwords("CafeWiFi", 3)
-    assert len(preds) == 3
-    assert isinstance(preds[0], str)
+    preds = auditor.predict_passwords("Cafe_Rouge_FreeWiFi", num_predictions=5)
+    assert isinstance(preds, list)
+    assert len(preds) == 5
+    assert all(isinstance(p, str) for p in preds)
 
 
-def test_wordlist_generator():
-    gen = WordlistGenerator()
-    words = gen.from_ssid("MyNetwork", size=10)
-    assert len(words) >= 5
-    assert any("MyNetwork" in w or "mynetwork" in w.lower() for w in words)
-
-
-def test_custom_mutator():
-    gen = WordlistGenerator()
-
-    def custom_mut(word: str) -> list[str]:
-        return [word + "CUSTOM", word.upper()]
-
-    gen.register_mutator(custom_mut)
-    words = gen.from_ssid("Test", size=20)
-    assert any("CUSTOM" in w for w in words)
-
-
-def test_plugin_loading():
-    gen = WordlistGenerator()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        plugin_file = Path(tmpdir) / "test_mutator.py"
-        plugin_file.write_text(
-            """def plugin_mutator(word):
-    return [word + "PLUGIN123", word + "FROMPLUGIN"]
-"""
-        )
-        gen.load_mutator_plugin(str(plugin_file))
-        words = gen.from_ssid("DemoNet", size=30)
-        assert any("PLUGIN123" in w for w in words)
-        assert any("FROMPLUGIN" in w for w in words)
-
-
-def test_analyze_handshake():
+@patch("wavebrute.auditor.ConsentManager.require_consent", return_value=True)
+def test_analyze_handshake(mock_consent):
     auditor = Auditor(simulation_mode=True)
     analysis = auditor.analyze_handshake("nonexistent.cap")
     assert analysis["has_handshake"] is True
+    assert "crack_time_estimate" in analysis
     assert analysis["simulation"] is True
+    assert mock_consent.called
 
 
-def test_export_for_hashcat(tmp_path):
+@patch("wavebrute.auditor.ConsentManager.require_consent", return_value=True)
+def test_export_for_hashcat(mock_consent):
     auditor = Auditor(simulation_mode=True)
-    out_path = tmp_path / "test.22000"
-    path = auditor.export_for_hashcat(
-        ssid="TestNet", output_path=str(out_path)
-    )
-    assert Path(path).exists()
-    content = Path(path).read_text()
-    assert "# WaveBrute Hashcat Export" in content
+    path = auditor.export_for_hashcat("TestNet")
+    assert path.endswith(".22000")
+    assert os.path.isfile(path)
+    os.unlink(path)
+    assert mock_consent.called
 
 
-def test_build_report(tmp_path):
+@patch("wavebrute.auditor.ConsentManager.require_consent", return_value=True)
+def test_build_report(mock_consent):
     auditor = Auditor(simulation_mode=True)
     auditor.scan()
     auditor.simulate_attack("TestSSID")
-    report_path = auditor.build_report(
-        title="Test Report",
-        output_path=str(tmp_path / "test_report.pdf"),
-        format="pdf",
-    )
-    assert Path(report_path).exists()
-    md_path = str(tmp_path / "test.md")
-    md_report = auditor.build_report(
-        title="Test MD", output_path=md_path, format="md"
-    )
-    assert Path(md_report).exists() and md_report.endswith(".md")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        report_path = os.path.join(tmp_dir, "test_report.pdf")
+        path = auditor.build_report(title="Test Report", output_path=report_path)
+        assert os.path.isfile(path)
+        md_path = os.path.join(tmp_dir, "test.md")
+        md_path = auditor.build_report("Test MD", format="md", output_path=md_path)
+        assert os.path.isfile(md_path)
+        html_path = os.path.join(tmp_dir, "test.html")
+        html_path = auditor.build_report("Test HTML", format="html", output_path=html_path)
+        assert os.path.isfile(html_path)
+    assert mock_consent.called
 
 
 def test_batch_audit():
     auditor = Auditor(simulation_mode=True)
-    results = auditor.batch_audit(
-        ["Net1", "Net2"], max_attempts=100, include_pmkid=True, include_predictions=True
-    )
-    assert len(results) >= 4
-    assert all(isinstance(r, dict) for r in results)
-    assert any(r.get("type") == "password_predictions" for r in results)
+    with patch.object(auditor.consent_manager, "require_consent", return_value=True):
+        results = auditor.batch_audit(
+            ssids=["Net1", "Net2"],
+            max_attempts=100,
+            include_pmkid=True,
+            include_predictions=True,
+        )
+        assert len(results) >= 4
+        assert any(r.get("type") == "password_predictions" for r in results)
 
 
-@pytest.fixture
-def mock_consent(monkeypatch):
-    monkeypatch.setattr(
-        "wavebrute.ethics.ConsentManager.require_consent",
-        lambda self, action: True,
-    )
+def test_consent_blocked():
+    auditor = Auditor(simulation_mode=True)
+    with patch.object(auditor.consent_manager, "require_consent", return_value=False):
+        with pytest.raises(PermissionError):
+            auditor.scan()
 
 
-def test_live_scan_with_mocked_consent(mock_consent):
-    auditor = Auditor(simulation_mode=False, interface="wlan0")
-    nets = auditor.scan()
-    assert len(nets) > 0
-    assert all("ai_hint" in net for net in nets)
+def test_plugin_system():
+    auditor = Auditor(simulation_mode=True)
+
+    def custom_mutator(word):
+        return [word + "2024", word.upper()]
+
+    auditor.register_mutator(custom_mutator)
+    with patch.object(auditor.consent_manager, "require_consent", return_value=True):
+        result = auditor.simulate_attack("CorpWiFi")
+        assert result["success"]

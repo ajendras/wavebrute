@@ -1,7 +1,7 @@
-"""Report generation for WaveBrute audits.
+"""Report generation module for WaveBrute.
 
-Supports PDF (ReportLab with neo-brutalist styling), Markdown and HTML (with inline CSS).
-Uses Jinja2 for templating where appropriate. All outputs include ethics statements.
+Uses ReportLab for PDF with neo-brutalist design (thick borders, screaming colors).
+Uses Jinja2 for Markdown and HTML reports with matching brutalist CSS.
 """
 
 from __future__ import annotations
@@ -14,32 +14,31 @@ import jinja2
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 
 class ReportBuilder:
-    """Builds professional PDF, Markdown and HTML reports from audit results.
+    """Builds professional audit reports in PDF, Markdown or HTML."""
 
-    Uses ReportLab for PDF with neo-brutalist styling (thick borders, bright colors).
-    Jinja2 for HTML/Markdown templates.
-    """
-
-    def __init__(self, results: list[dict[str, Any]]) -> None:
-        self.results = results or []
+    def __init__(self) -> None:
+        self.results: list[dict[str, Any]] = []
 
     @classmethod
     def from_results(cls, results: list[dict[str, Any]]) -> ReportBuilder:
-        """Create ReportBuilder from a list of audit result dicts."""
-        return cls(results)
+        """Create builder populated with audit results."""
+        builder = cls()
+        builder.results = list(results)
+        return builder
 
-    def to_pdf(self, title: str = "WaveBrute Ethical Audit Report", output_path: str | None = None) -> str:
-        """Generate a PDF report with brutalist design."""
+    def to_pdf(
+        self,
+        title: str = "WaveBrute Ethical Audit Report",
+        output_path: str | None = None,
+    ) -> str:
+        """Generate PDF report with neo-brutalist styling."""
         if output_path is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = f"wavebrute_report_{timestamp}.pdf"
-
-        if not self.results:
-            raise ValueError("No results to report on")
 
         doc = SimpleDocTemplate(
             output_path,
@@ -51,167 +50,190 @@ class ReportBuilder:
         )
 
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            "Title",
-            parent=styles["Title"],
+
+        brutal_style = ParagraphStyle(
+            "Brutalist",
+            parent=styles["Heading1"],
             fontName="Helvetica-Bold",
             fontSize=24,
             textColor=colors.HexColor("#ff004d"),
-            spaceAfter=30,
             borderWidth=4,
             borderColor=colors.HexColor("#00ff9f"),
             borderPadding=10,
+            spaceAfter=20,
         )
 
-        heading_style = ParagraphStyle(
-            "Heading",
+        heading2 = ParagraphStyle(
+            "Heading2",
             parent=styles["Heading2"],
             fontName="Helvetica-Bold",
             fontSize=16,
             textColor=colors.HexColor("#00ff9f"),
+            backColor=colors.HexColor("#111111"),
+            borderWidth=3,
+            borderColor=colors.yellow,
             spaceAfter=12,
         )
 
-        elements = []
-        elements.append(Paragraph(f"<b>{title}</b>", title_style))
-        elements.append(Spacer(1, 20))
+        normal = ParagraphStyle(
+            "Normal",
+            parent=styles["Normal"],
+            fontName="Courier",
+            fontSize=10,
+            textColor=colors.black,
+            spaceAfter=6,
+        )
 
-        elements.append(Paragraph("Audit Summary", heading_style))
-        elements.append(Spacer(1, 12))
+        story = []
 
-        summary_data = [
-            ["Metric", "Value"],
-            ["Networks Scanned", str(len([r for r in self.results if r.get("type") == "scan"]))],
-            ["Simulations Run", str(len(self.results))],
-            ["Successful Cracks", str(sum(1 for r in self.results if r.get("success", False)))],
-            ["Report Generated", datetime.now().strftime("%Y-%m-%d %H:%M")],
-        ]
+        story.append(Paragraph(f"<b>{title}</b>", brutal_style))
+        story.append(Spacer(1, 20))
 
-        table = Table(summary_data, colWidths=[200, 200])
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ff004d")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 14),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#f0f0f0")),
-                    ("GRID", (0, 0), (-1, -1), 2, colors.HexColor("#00ff9f")),
-                    ("BOX", (0, 0), (-1, -1), 4, colors.black),
+        story.append(Paragraph("Audit Summary", heading2))
+        story.append(Paragraph(f"Generated: {datetime.now().isoformat()}", normal))
+        story.append(Paragraph(f"Total results: {len(self.results)}", normal))
+        story.append(Spacer(1, 20))
+
+        if self.results:
+            data = [["Type", "SSID", "Success", "Details"]]
+            for res in self.results[:10]:
+                row = [
+                    res.get("type", "unknown"),
+                    res.get("ssid", "N/A"),
+                    str(res.get("success", "N/A")),
+                    str(res.get("password") or res.get("pin") or res.get("notes", ""))[:50],
                 ]
+                data.append(row)
+
+            table = Table(data, colWidths=[80, 100, 60, 220])
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ff004d")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, 0), 12),
+                        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#f0f0f0")),
+                        ("GRID", (0, 0), (-1, -1), 2, colors.HexColor("#00ff9f")),
+                        ("BOX", (0, 0), (-1, -1), 4, colors.yellow),
+                    ]
+                )
+            )
+            story.append(table)
+
+        story.append(Spacer(1, 30))
+        story.append(Paragraph("Recommendations", heading2))
+        story.append(
+            Paragraph(
+                "• Always obtain explicit written consent before live testing.<br/>"
+                "• Use strong, unique passwords and disable WPS.<br/>"
+                "• Prefer WPA3 over older standards.<br/>"
+                "• Monitor for unauthorized access points.",
+                normal,
             )
         )
-        elements.append(table)
-        elements.append(Spacer(1, 30))
 
-        elements.append(Paragraph("Detailed Findings", heading_style))
-        elements.append(Spacer(1, 12))
-
-        for i, result in enumerate(self.results[:10]):
-            ssid = result.get("ssid", "Unknown")
-            success = result.get("success", False)
-            rtype = result.get("type", "unknown")
-            detail = f"<b>{rtype.upper()} on {ssid}</b><br/>Success: {success}"
-            if result.get("password"):
-                detail += f"<br/>Password: {result['password']}"
-            if result.get("recommendations"):
-                detail += "<br/>Recommendations: " + "; ".join(result["recommendations"][:2])
-            elements.append(Paragraph(detail, styles["Normal"]))
-            elements.append(Spacer(1, 12))
-
-        elements.append(Paragraph(
-            "<br/><b>Ethics Statement:</b> This audit was conducted in simulation mode "
-            "or with explicit consent. Always obtain written permission before testing "
-            "live networks. WaveBrute is for educational and authorized pentesting only.",
-            styles["Normal"],
-        ))
-
-        doc.build(elements)
+        doc.build(story)
         return os.path.abspath(output_path)
 
-    def to_markdown(self, title: str = "WaveBrute Ethical Audit Report", output_path: str | None = None) -> str:
-        """Generate a Markdown report (GitHub friendly)."""
+    def to_markdown(
+        self,
+        title: str = "WaveBrute Ethical Audit Report",
+        output_path: str | None = None,
+    ) -> str:
+        """Generate Markdown report using Jinja2 template."""
         if output_path is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = f"wavebrute_report_{timestamp}.md"
 
-        lines = [
-            f"# {title}",
-            "",
-            f"**Generated:** {datetime.now().isoformat()}",
-            f"**Simulation Mode:** {any(r.get('simulation', True) for r in self.results)}",
-            "",
-            "## Summary",
-            "",
-            f"- Total results: {len(self.results)}",
-            f"- Networks audited: {len({r.get('ssid') for r in self.results if r.get('ssid')})}",
-            "",
-            "## Findings",
-            "",
-        ]
+        template_str = """# {{ title }}
 
-        for result in self.results:
-            ssid = result.get("ssid", "N/A")
-            success = result.get("success", "N/A")
-            rtype = result.get("type", "result").replace("_", " ").title()
-            lines.append(f"### {rtype}: {ssid}")
-            lines.append(f"- Success: **{success}**")
-            if result.get("password"):
-                lines.append(f"- Cracked Password: `{result['password']}`")
-            if result.get("attempts"):
-                lines.append(f"- Attempts: {result['attempts']}")
-            if result.get("recommendations"):
-                lines.append("**Recommendations:**")
-                for rec in result["recommendations"]:
-                    lines.append(f"  - {rec}")
-            lines.append("")
+**Generated**: {{ timestamp }}
 
-        lines.append("## Ethics & Responsible Use")
-        lines.append(
-            "This report was generated by WaveBrute. All activities were either simulated "
-            "or performed with explicit consent. Misuse is prohibited."
-        )
+## Summary
+- Networks audited: {{ num_results }}
+- Simulations run: {{ num_simulations }}
+- Success rate: {{ success_rate }}%
 
-        content = "\n".join(lines)
+## Findings
+
+{% for result in results %}
+### {{ result.type|title }} - {{ result.get('ssid', 'N/A') }}
+- Success: **{{ result.get('success', 'N/A') }}**
+{% if result.get('password') %} - Password: `{{ result.password }}`{% endif %}
+{% if result.get('pin') %} - PIN: `{{ result.pin }}`{% endif %}
+- Attempts: {{ result.get('attempts', 'N/A') }}
+{% if result.get('notes') %}
+> {{ result.notes }}
+{% endif %}
+
+{% endfor %}
+
+## Recommendations
+- Use the Ethics Guard before any live operations.
+- Disable WPS on all devices.
+- Upgrade to WPA3.
+- Monitor with tools like WaveBrute regularly.
+
+---
+*Report generated by WaveBrute v0.1.0. For educational and authorized pentesting only.*
+"""
+
+        template = jinja2.Template(template_str)
+
+        num_simulations = sum(1 for r in self.results if r.get("simulation", False))
+        successes = sum(1 for r in self.results if r.get("success") is True)
+        success_rate = round((successes / len(self.results) * 100), 1) if self.results else 0
+
+        context = {
+            "title": title,
+            "timestamp": datetime.now().isoformat(),
+            "num_results": len(self.results),
+            "num_simulations": num_simulations,
+            "success_rate": success_rate,
+            "results": self.results,
+        }
+
+        content = template.render(**context)
+
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(content)
 
         return os.path.abspath(output_path)
 
-    def to_html(self, title: str = "WaveBrute Ethical Audit Report", output_path: str | None = None) -> str:
-        """Generate HTML report with neo-brutalist CSS styling."""
+    def to_html(
+        self,
+        title: str = "WaveBrute Ethical Audit Report",
+        output_path: str | None = None,
+    ) -> str:
+        """Generate HTML report with neo-brutalist inline CSS using Jinja2."""
         if output_path is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = f"wavebrute_report_{timestamp}.html"
 
-        template = """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>{{ title }}</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-        body {
-            font-family: 'Press Start 2P', system-ui;
-            background: #111111;
-            color: #00ff9f;
-            padding: 40px;
+        css = """
+        body { 
+            background: #111111; 
+            color: #00ff9f; 
+            font-family: 'Courier New', monospace; 
+            padding: 40px; 
             line-height: 1.6;
         }
-        h1, h2 {
-            color: #ff004d;
-            border-bottom: 6px solid #ffff00;
-            padding-bottom: 10px;
+        h1, h2 { 
+            color: #ff004d; 
+            border: 6px solid #ffff00; 
+            padding: 20px; 
+            background: #000; 
+            display: inline-block;
         }
-        .brutalist {
-            border: 6px solid #ffff00;
-            background: #222222;
+        .brutalist-box {
+            border: 4px solid #ff00ff;
+            background: #1a1a1a;
             padding: 20px;
             margin: 20px 0;
-            box-shadow: 8px 8px 0 #ff004d;
+            box-shadow: 8px 8px 0 #ffff00;
         }
         table {
             border-collapse: collapse;
@@ -227,74 +249,72 @@ class ReportBuilder:
             background: #ff004d;
             color: white;
         }
-        .success { color: #00ff9f; font-weight: bold; }
-        .header {
-            background: #ffff00;
-            color: #111;
-            padding: 20px;
-            border: 6px solid #ff004d;
-            text-align: center;
-            margin-bottom: 40px;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>WAVEBRUTE</h1>
-        <p>ETHICAL AUDIT REPORT</p>
-    </div>
-    <h1>{{ title }}</h1>
-    <p><strong>Generated on:</strong> {{ timestamp }}</p>
-
-    <div class="brutalist">
-        <h2>Audit Summary</h2>
-        <p>Total simulations: {{ total_results }}</p>
-        <p>Success rate: {{ success_rate }}%</p>
-    </div>
-
-    <h2>Findings</h2>
-    {{ findings_html }}
-
-    <div class="brutalist">
-        <h2>Responsible Disclosure</h2>
-        <p>This report is for educational purposes. Always obtain explicit written consent before performing wireless audits.</p>
-        <p>WaveBrute - Scan. Simulate. Secure.</p>
-    </div>
-</body>
-</html>
         """
 
-        total = len(self.results)
-        successes = sum(1 for r in self.results if r.get("success", False))
-        success_rate = round((successes / total * 100), 1) if total > 0 else 0.0
+        template_str = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <style>{{ css }}</style>
+</head>
+<body>
+    <h1>{{ title }}</h1>
+    <p><strong>Generated:</strong> {{ timestamp }}</p>
+    
+    <div class="brutalist-box">
+        <h2>Audit Summary</h2>
+        <p>Total results: {{ num_results }} | Simulations: {{ num_simulations }} | Success rate: {{ success_rate }}%</p>
+    </div>
+    
+    <h2>Findings</h2>
+    {% for result in results %}
+    <div class="brutalist-box">
+        <h3>{{ result.type|title }} on {{ result.get('ssid', 'N/A') }}</h3>
+        <p><strong>Success:</strong> {{ result.get('success', False) }}</p>
+        {% if result.get('password') %}<p><strong>Password:</strong> <code>{{ result.password }}</code></p>{% endif %}
+        {% if result.get('pin') %}<p><strong>PIN:</strong> <code>{{ result.pin }}</code></p>{% endif %}
+        <p><strong>Attempts:</strong> {{ result.get('attempts', 'N/A') }}</p>
+        {% if result.get('notes') %}<p><em>{{ result.notes }}</em></p>{% endif %}
+    </div>
+    {% endfor %}
+    
+    <div class="brutalist-box">
+        <h2>Responsible Use Recommendations</h2>
+        <ul>
+            <li>Complete the ethics checklist before any live scan or attack.</li>
+            <li>WPS should be disabled on all routers.</li>
+            <li>Use WPA3 whenever possible.</li>
+            <li>Only test networks you own or have explicit permission for.</li>
+        </ul>
+    </div>
+    
+    <footer style="margin-top: 50px; color: #666; border-top: 3px solid #ffff00; padding-top: 20px;">
+        Generated by WaveBrute • Educational &amp; Ethical Pentesting Toolkit
+    </footer>
+</body>
+</html>
+"""
 
-        findings = ""
-        for result in self.results:
-            ssid = result.get("ssid", "Unknown")
-            success_cls = "class='success'" if result.get("success") else ""
-            findings += f"<div class='brutalist'><h3>{result.get('type', 'Audit')} on <em>{ssid}</em></h3>"
-            findings += f"<p {success_cls}>Success: {result.get('success', 'N/A')}</p>"
-            if result.get("password"):
-                findings += f"<p>Password: <code>{result['password']}</code></p>"
-            if result.get("notes"):
-                findings += f"<p>{result['notes']}</p>"
-            findings += "</div>"
+        template = jinja2.Template(template_str)
 
-        html = (
-            template.replace("{{ title }}", title)
-            .replace("{{ timestamp }}", datetime.now().isoformat())
-            .replace("{{ total_results }}", str(total))
-            .replace("{{ success_rate }}", str(success_rate))
-            .replace("{{ findings_html }}", findings)
-        )
+        num_simulations = sum(1 for r in self.results if r.get("simulation", False))
+        successes = sum(1 for r in self.results if r.get("success") is True)
+        success_rate = round((successes / len(self.results) * 100) if self.results else 0, 1)
+
+        context = {
+            "title": title,
+            "timestamp": datetime.now().isoformat(),
+            "num_results": len(self.results),
+            "num_simulations": num_simulations,
+            "success_rate": success_rate,
+            "results": self.results,
+            "css": css,
+        }
+
+        content = template.render(**context)
 
         with open(output_path, "w", encoding="utf-8") as f:
-            f.write(html)
+            f.write(content)
 
         return os.path.abspath(output_path)
-
-
-if __name__ == "__main__":
-    builder = ReportBuilder([{"type": "test", "ssid": "TestNet", "success": True, "password": "testpass"}])
-    print(builder.to_markdown("Test Report"))
-    print("Report generation test completed.")
