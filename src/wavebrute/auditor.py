@@ -1,8 +1,8 @@
 """Core auditing engine for WaveBrute.
 
 Implements the primary Auditor class with full support for:
-- Live or simulated WiFi scanning (via scanner.py - now cross-platform
-  with native Windows netsh + Npcap support for Scapy)
+- Live or simulated WiFi scanning (via scanner.py - now fully cross-platform
+  with Linux iwlist, macOS airport, Windows netsh/Npcap support for Scapy)
 - Safe in-memory brute-force attack simulation
 - Safe in-memory PMKID attack simulation (client-less RSN extraction)
 - Safe in-memory WPS PIN simulation
@@ -48,8 +48,8 @@ class Auditor:
     TinyPasswordModel (bundled after training on weak-password patterns)
     powers AI suggestions and direct password prediction.
 
-    Live scanning now supports Windows via netsh (Npcap required for
-    full native Scapy packet functionality).
+    Live scanning now supports Linux (iwlist), macOS (airport) and
+    Windows (netsh/Npcap).
     """
 
     def __init__(self, simulation_mode: bool = True, interface: str = "wlan0") -> None:
@@ -60,7 +60,8 @@ class Auditor:
                 Defaults to True (recommended for all non-authorized use).
             interface: Wireless interface name (ignored in simulation mode).
                 On Windows the default is automatically adjusted to "Wi-Fi"
-                when the provided value looks like a Linux name.
+                when the provided value looks like a Linux name. On macOS
+                the default is adjusted to "en0".
 
         Raises:
             ValueError: If simulation_mode is not bool or interface is empty.
@@ -69,7 +70,7 @@ class Auditor:
             raise ValueError("simulation_mode must be a boolean (True for safe demo mode)")
         if not isinstance(interface, str) or not interface.strip():
             raise ValueError(
-                "interface must be a non-empty string (e.g. 'wlan0', 'wlp2s0', 'Wi-Fi'). "
+                "interface must be a non-empty string (e.g. 'wlan0', 'wlp2s0', 'Wi-Fi', 'en0'). "
                 "On Android this is typically handled by the OS."
             )
 
@@ -81,6 +82,11 @@ class Auditor:
             and self.interface.lower() in ("wlan0", "wlan1", "wlo1")
         ):
             self.interface = "Wi-Fi"
+        if (
+            platform.system() == "Darwin"
+            and self.interface.lower() in ("wlan0", "wlan1", "wlo1")
+        ):
+            self.interface = "en0"
 
         self.consent_manager = ConsentManager()
         self.wordlist_generator = WordlistGenerator()
@@ -107,8 +113,9 @@ class Auditor:
         """Scan for nearby WiFi networks.
 
         In simulation mode returns realistic synthetic data. In live mode
-        delegates to scan_wifi() from scanner.py (now supports Windows
-        via netsh; Npcap required for full Scapy compatibility).
+        delegates to scan_wifi() from scanner.py (now fully cross-platform:
+        Linux iwlist, macOS airport, Windows netsh; Npcap required for full
+        Scapy compatibility on Windows).
 
         Args:
             interface: Optional interface override.
@@ -126,7 +133,7 @@ class Auditor:
 
         if not isinstance(interface, str) or not interface.strip():
             raise ValueError(
-                "interface must be a non-empty string like 'wlan0' or 'Wi-Fi'. "
+                "interface must be a non-empty string like 'wlan0', 'en0' or 'Wi-Fi'. "
                 "Run with simulation_mode=True if you lack privileges."
             )
 
@@ -147,8 +154,9 @@ class Auditor:
             except (OSError, RuntimeError, PermissionError) as exc:
                 raise RuntimeError(
                     f"Live scan on '{interface}' failed. This usually requires "
-                    "root privileges and monitor mode (airmon-ng) on Linux or "
-                    "Npcap on Windows (https://npcap.com/). "
+                    "root privileges and monitor mode (airmon-ng) on Linux, "
+                    "the airport utility on macOS, or Npcap on Windows "
+                    "(https://npcap.com/). "
                     f"Original error: {exc}. Use simulation_mode=True for training."
                 ) from exc
 

@@ -360,6 +360,14 @@ The test suite (`tests/test_auditor.py`) covers `Auditor` initialisation, `simul
 - [x] Create prebuilt signed APK releases in CI
 - [x] Add dark theme variant while keeping brutalist contrast
 - [x] Support WPS PIN brute-force simulation
+- [x] Add macOS airport scanning support in scanner.py for full cross-platform coverage
+- [ ] Implement dedicated CLI command for handshake capture analysis and export
+- [ ] Add comprehensive tests for GUI screens, theme toggling and CaptureScreen workflows
+- [ ] Create examples/plugins/ directory with documented sample mutator files
+- [ ] Enhance ConsentManager to support exporting timestamped audit logs as CSV
+- [ ] Implement configurable report templates allowing users to supply custom Jinja2 files
+- [ ] Add progress indicators and ETA to CLI batch and long-running simulation commands
+- [ ] Improve docs/index.html with updated GUI screenshots and interactive demo embed
 
 > 🤖 This roadmap is worked through continuously — ideas and PRs welcome!
 <!-- roadmap:end -->
